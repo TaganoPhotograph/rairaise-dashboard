@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>らいらいず 個人成績・段位進捗</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --felt-1:#0b3d2e; --felt-2:#0e2f26; --felt-edge:#062018;
+    --tile:#f6efdd; --tile-edge:#cdbb8e;
+    --ink:#20281f; --ink-soft:#5b6357;
+    --red:#a8322c; --green-dragon:#1f6b3a; --gold:#b8860b;
+    --amber:#b3781f;
+    --shadow: 0 6px 16px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(circle at 15% 10%, rgba(255,255,255,.03), transparent 40%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0 2px, transparent 2px 10px),
+      linear-gradient(160deg, var(--felt-1), var(--felt-2) 60%, var(--felt-edge));
+    min-height:100vh;
+    padding-bottom:80px;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:36px 20px 0;}
+
+  header.plaque{text-align:center;padding:38px 20px 30px;}
+  .kanban{
+    display:inline-block; background:var(--tile); border:1px solid var(--tile-edge);
+    border-radius:10px; box-shadow: var(--shadow), inset 0 0 0 3px rgba(255,255,255,.4);
+    padding:22px 48px; position:relative;
+  }
+  .kanban::before, .kanban::after{content:"";position:absolute;top:8px;bottom:8px;width:1px;background:rgba(0,0,0,.08);}
+  .kanban::before{left:10px;} .kanban::after{right:10px;}
+  .kanban h1{font-family:'Shippori Mincho', serif;font-weight:800;font-size:2.6rem;letter-spacing:.14em;margin:0;color:var(--ink);}
+  .kanban .sub{margin-top:6px;font-size:.82rem;letter-spacing:.2em;color:var(--ink-soft);}
+  .updated{margin-top:14px;font-size:.78rem;color:rgba(255,255,255,.55);letter-spacing:.05em;}
+
+  .statbar{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 34px;}
+  .stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px 10px;text-align:center;color:#eef3ee;}
+  .stat .n{font-family:'Shippori Mincho', serif;font-weight:700;font-size:1.5rem;color:#f6efdd;}
+  .stat .l{font-size:.66rem;letter-spacing:.1em;color:rgba(255,255,255,.55);margin-top:2px;}
+
+  h2.section-title{
+    font-family:'Shippori Mincho', serif; color:#f6efdd; font-size:1.05rem;
+    letter-spacing:.2em; text-align:center; margin:0 0 18px; opacity:.85;
+  }
+  h2.section-title .asof{
+    display:block; font-family:'Zen Kaku Gothic New',sans-serif; font-weight:400;
+    letter-spacing:.05em; font-size:.68rem; color:rgba(255,255,255,.5);
+    margin-top:6px;
+  }
+
+  .picker{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center; margin-bottom:20px;}
+  .picker select{
+    background:var(--tile); border:1px solid var(--tile-edge); color:var(--ink);
+    font-family:'Zen Kaku Gothic New',sans-serif; font-weight:700; font-size:.9rem;
+    padding:9px 16px; border-radius:20px; cursor:pointer; min-width:220px;
+  }
+
+  .examcard{
+    background:var(--tile); border:1px solid var(--tile-edge); border-radius:16px;
+    box-shadow:var(--shadow); padding:26px 26px 22px; margin-bottom:46px;
+  }
+  .exam-head{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px;}
+  .exam-name{font-family:'Shippori Mincho', serif; font-weight:800; font-size:1.5rem;}
+  .exam-badges{display:flex; gap:8px; flex-wrap:wrap;}
+  .rankbadge{display:inline-block;font-size:.72rem;padding:4px 12px;border-radius:20px;color:#fff;font-weight:700;letter-spacing:.05em;}
+  .statusbadge{display:inline-block;font-size:.72rem;padding:4px 12px;border-radius:20px;font-weight:700;letter-spacing:.05em;border:1.5px solid;}
+  .statusbadge.ready{color:var(--green-dragon);border-color:var(--green-dragon);background:#e9f5ec;}
+  .statusbadge.on_track{color:#1f6b3a;border-color:#1f6b3a;background:#eef7f0;}
+  .statusbadge.behind{color:var(--amber);border-color:var(--amber);background:#fbf1e3;}
+  .statusbadge.reset_pending{color:var(--red);border-color:var(--red);background:#fbeceb;}
+  .statusbadge.not_started{color:var(--ink-soft);border-color:var(--ink-soft);background:#f1efe8;}
+  .statusbadge.unranked{color:var(--ink-soft);border-color:var(--ink-soft);background:#f1efe8;}
+
+  .exam-msg{font-size:.82rem; color:var(--ink-soft); margin-bottom:18px; line-height:1.6;}
+
+  .tilewall{display:flex; flex-wrap:wrap; gap:4px; margin-bottom:20px;}
+  .tilewall .t{width:18px;height:24px;border-radius:3px;background:#efe6cd;border:1px solid var(--tile-edge);}
+  .tilewall .t.done{background:var(--green-dragon);border-color:var(--green-dragon);}
+  .tilewall .lbl{width:100%;font-size:.68rem;color:var(--ink-soft);margin-bottom:2px;}
+
+  .metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
+  .metric{background:rgba(0,0,0,.03);border:1px solid var(--tile-edge);border-radius:10px;padding:14px 16px;}
+  .metric .mlabel{font-size:.7rem;color:var(--ink-soft);letter-spacing:.05em;margin-bottom:6px;display:flex;justify-content:space-between;}
+  .metric .mval{font-family:'Shippori Mincho', serif;font-size:1.3rem;font-weight:700;}
+  .metric .mval .req{font-size:.78rem;font-weight:500;color:var(--ink-soft);margin-left:6px;}
+  .mtag{font-size:.66rem;padding:2px 8px;border-radius:12px;font-weight:700;}
+  .mtag.clear{background:#e9f5ec;color:var(--green-dragon);}
+  .mtag.notclear{background:#fbeceb;color:var(--red);}
+
+  .pacebox{background:rgba(184,134,11,.08); border:1px dashed var(--gold); border-radius:10px; padding:12px 16px; font-size:.8rem; color:#6b5410; line-height:1.6;}
+  .pacebox.placebox{background:rgba(31,107,58,.07); border:1px dashed var(--green-dragon); color:#204d2f; margin-top:8px;}
+
+  .simulator{margin-top:16px; padding:16px 18px; border-radius:12px; border:2px solid var(--tile-edge); background:rgba(0,0,0,.03); transition: background .2s ease, border-color .2s ease;}
+  .simulator.safe{background:rgba(31,107,58,.12); border-color:var(--green-dragon);}
+  .simulator.unsafe{background:rgba(168,50,44,.10); border-color:var(--red);}
+  .simulator .simtitle{font-size:.76rem; letter-spacing:.05em; color:var(--ink-soft); margin-bottom:10px; font-weight:700;}
+  .simulator .siminputs{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:12px;}
+  .simulator .simcol{text-align:center;}
+  .simulator .simcol label{display:block; font-size:.7rem; color:var(--ink-soft); margin-bottom:4px;}
+  .simulator .simcol input{width:100%; text-align:center; font-family:'Shippori Mincho', serif; font-weight:700; font-size:1.1rem; padding:8px 4px; border-radius:8px; border:1px solid var(--tile-edge); background:var(--tile); color:var(--ink);}
+  .simulator .simresult{font-size:.82rem; line-height:1.6; color:var(--ink);}
+  .simulator .simresult b{font-family:'Shippori Mincho', serif; font-size:1.05rem;}
+  .simulator .simreset{margin-top:8px; background:none; border:1px solid var(--ink-soft); color:var(--ink-soft); font-size:.7rem; padding:5px 12px; border-radius:14px; cursor:pointer;}
+
+  /* ---- career + period two-panel ---- */
+  .stats-two{
+    margin-top:18px; padding-top:16px; border-top:1px dashed var(--tile-edge);
+    display:grid; grid-template-columns:1fr 1fr; gap:14px;
+  }
+  .stats-panel{
+    background:rgba(0,0,0,.03); border:1px solid var(--tile-edge); border-radius:10px;
+    padding:14px 14px 10px;
+  }
+  .stats-panel .ptitle{
+    font-family:'Shippori Mincho', serif; font-weight:700; font-size:.85rem;
+    letter-spacing:.1em; color:var(--ink); text-align:center;
+    padding-bottom:8px; margin-bottom:10px; border-bottom:1px solid var(--tile-edge);
+  }
+  .stats-panel .ptitle.career{color:var(--gold);}
+  .stats-panel .ptitle.period{color:var(--green-dragon);}
+  .stats-panel .pgrid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px 12px; text-align:center;}
+  .stats-panel .pgrid > div{font-size:.68rem; color:var(--ink-soft);}
+  .stats-panel .pgrid b{display:block; font-family:'Shippori Mincho', serif; font-size:1rem; color:var(--ink); font-weight:700; margin-bottom:1px;}
+
+  .controls{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .sortbtns{display:flex; gap:6px; flex-wrap:wrap;}
+  .sortbtns button{background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); color:#eef3ee; font-family:'Zen Kaku Gothic New',sans-serif; font-size:.74rem; padding:7px 12px; border-radius:20px; cursor:pointer; letter-spacing:.05em; transition:.15s;}
+  .sortbtns button:hover{background:rgba(255,255,255,.16);}
+  .sortbtns button.active{background:var(--tile); color:var(--ink); border-color:var(--tile); font-weight:700;}
+  .searchbox{background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); border-radius:20px; padding:7px 14px;}
+  .searchbox input{background:transparent; border:none; outline:none; color:#f6efdd; font-size:.8rem; width:150px; font-family:'Zen Kaku Gothic New',sans-serif;}
+  .searchbox input::placeholder{color:rgba(255,255,255,.4);}
+
+  .board{background:rgba(0,0,0,.15); border-radius:14px; padding:8px; border:1px solid rgba(255,255,255,.08);}
+  .row{display:grid; grid-template-columns:44px 1.3fr 78px 66px 60px 74px; align-items:center; gap:6px; background:var(--tile); border:1px solid var(--tile-edge); border-radius:8px; padding:11px 12px; margin-bottom:6px; font-size:.82rem; cursor:pointer; transition:transform .12s ease;}
+  .row:hover{transform:translateX(2px);}
+  .row.selected{outline:2px solid var(--gold);}
+  .row.head{background:transparent;border:none;color:rgba(255,255,255,.5);font-size:.64rem;letter-spacing:.08em;padding:2px 12px 8px;margin-bottom:0;cursor:default;}
+  .row.head:hover{transform:none;}
+  .row .rk{font-family:'Shippori Mincho', serif;font-weight:800;font-size:.95rem;color:var(--ink-soft);text-align:center;}
+  .row .nm{font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .row .badge{justify-self:start;font-size:.66rem;padding:3px 9px;border-radius:20px;color:#fff;text-align:center;white-space:nowrap;}
+  .row .num{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .row .st{justify-self:end;font-size:.62rem;padding:3px 8px;border-radius:12px;font-weight:700;text-align:center;white-space:nowrap;}
+  .row .st.ready{background:#e9f5ec;color:var(--green-dragon);}
+  .row .st.on_track{background:#eef7f0;color:#1f6b3a;}
+  .row .st.behind{background:#fbf1e3;color:var(--amber);}
+  .row .st.reset_pending{background:#fbeceb;color:var(--red);}
+  .row .st.not_started{background:#f1efe8;color:var(--ink-soft);}
+  .row .st.unranked{background:#f1efe8;color:var(--ink-soft);}
+
+  .empty{text-align:center;color:rgba(255,255,255,.5);padding:40px;font-size:.85rem;}
+  footer{text-align:center;color:rgba(255,255,255,.35);font-size:.7rem;margin-top:40px;letter-spacing:.05em;}
+
+  @media (max-width:720px){
+    .statbar{grid-template-columns:repeat(2,1fr);}
+    .metrics{grid-template-columns:1fr;}
+    .stats-two{grid-template-columns:1fr;}
+    .row{grid-template-columns:30px 1fr 60px 60px;}
+    .row .col-place, .row .col-status{display:none;}
+    .row.head .col-place, .row.head .col-status{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="plaque">
+    <div class="kanban">
+      <h1>らいらいず</h1>
+      <div class="sub">個人 成績 ・ 段位 進捗</div>
+    </div>
+    <div class="updated">2026年08月30日 13:34 更新</div>
+  </header>
+
+  <div class="statbar" id="statbar"></div>
+
+  <h2 class="section-title">昇 段 診 断<span class="asof">2026年08月30日時点</span></h2>
+  <div class="picker">
+    <select id="playerSelect"></select>
+  </div>
+  <div class="examcard" id="examcard"></div>
+
+  <h2 class="section-title">らいらいずメンバー一覧</h2>
+  <div class="controls">
+    <div class="sortbtns" id="sortbtns"></div>
+    <div class="searchbox"><input id="search" type="text" placeholder="名前で検索..."></div>
+  </div>
+  <div class="board">
+    <div class="row head">
+      <div>順</div>
+      <div>名前</div>
+      <div>段位</div>
+      <div class="num col-place">平均着順</div>
+      <div class="num">半荘</div>
+      <div class="col-status" style="text-align:right;">審査状況</div>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <footer>らいらいず 個人成績管理表より自動生成 &mdash; 段位基準はサークル既定値に基づく</footer>
+</div>
+
+<script id="rawData" type="application/json">{"rank_order": ["5級", "4級", "3級", "2級", "1級", "初段", "二段", "三段", "四段", "五段", "六段", "七段", "八段", "九段"], "rank_req": {"5級": {"games": 6, "place": 2.55, "avg": 250}, "4級": {"games": 6, "place": 2.5, "avg": 250}, "3級": {"games": 6, "place": 2.45, "avg": 250}, "2級": {"games": 6, "place": 2.4, "avg": 260}, "1級": {"games": 9, "place": 2.35, "avg": 270}, "初段": {"games": 12, "place": 2.3, "avg": 280}, "二段": {"games": 12, "place": 2.3, "avg": 285}, "三段": {"games": 15, "place": 2.28, "avg": 285}, "四段": {"games": 15, "place": 2.25, "avg": 290}, "五段": {"games": 15, "place": 2.2, "avg": 290}, "六段": {"games": 18, "place": 2.17, "avg": 295}, "七段": {"games": 18, "place": 2.15, "avg": 300}, "八段": {"games": 30, "place": 2.12, "avg": 300}, "九段": {"games": 30, "place": 2.1, "avg": 320}}, "players": [{"key": "ヨナ", "name": "ヨナ", "rank": "九段", "rank_value": 13, "career": {"games": 92, "avg_place": 2.304, "last_avoid_rate": 0.772, "points": 24557, "top_count": 29}, "exam": {"rank": "九段", "rank_value": 13, "required_games": 30, "required_place": 2.1, "required_avg": 320, "played_games": 13, "avg_place": 2.923, "avg_score": 181.54, "place_sum": 38, "last_avoid_rate": 0.462, "remaining_games": 17, "place_clear": false, "avg_clear": false, "total_current": 2360, "total_required": 9600, "total_remaining": 7240, "pace_needed": 425.9, "status": "behind"}}, {"key": "kitasan", "name": "kitasan", "rank": "七段", "rank_value": 11, "career": {"games": 118, "avg_place": 2.508, "last_avoid_rate": 0.72, "points": 28721, "top_count": 30}, "exam": {"rank": "七段", "rank_value": 11, "required_games": 18, "required_place": 2.15, "required_avg": 300, "played_games": 8, "avg_place": 3.0, "avg_score": 225.0, "place_sum": 24, "last_avoid_rate": 0.625, "remaining_games": 10, "place_clear": false, "avg_clear": false, "total_current": 1800, "total_required": 5400, "total_remaining": 3600, "pace_needed": 360.0, "status": "behind"}}, {"key": "ゆき", "name": "ゆき", "rank": "2級", "rank_value": 3, "career": {"games": 8, "avg_place": 2.75, "last_avoid_rate": 0.75, "points": 1803, "top_count": 1}, "exam": {"rank": "2級", "rank_value": 3, "required_games": 6, "required_place": 2.4, "required_avg": 260, "played_games": 2, "avg_place": 1.5, "avg_score": 343.5, "place_sum": 3, "last_avoid_rate": 1.0, "remaining_games": 4, "place_clear": true, "avg_clear": true, "total_current": 687, "total_required": 1560, "total_remaining": 873, "pace_needed": 218.2, "status": "on_track"}}, {"key": "みぃ", "name": "みぃ", "rank": "1級", "rank_value": 4, "career": {"games": 13, "avg_place": 2.077, "last_avoid_rate": 0.923, "points": 3959, "top_count": 4}, "exam": {"rank": "1級", "rank_value": 4, "required_games": 9, "required_place": 2.35, "required_avg": 270, "played_games": 7, "avg_place": 2.0, "avg_score": 329.86, "place_sum": 14, "last_avoid_rate": 1.0, "remaining_games": 2, "place_clear": true, "avg_clear": true, "total_current": 2309, "total_required": 2430, "total_remaining": 121, "pace_needed": 60.5, "status": "on_track"}}, {"key": "ヨシ", "name": "ヨシ", "rank": "八段", "rank_value": 12, "career": {"games": 138, "avg_place": 2.377, "last_avoid_rate": 0.804, "points": 38229, "top_count": 39}, "exam": {"rank": "八段", "rank_value": 12, "required_games": 30, "required_place": 2.12, "required_avg": 300, "played_games": 21, "avg_place": 1.81, "avg_score": 327.9, "place_sum": 38, "last_avoid_rate": 0.952, "remaining_games": 9, "place_clear": true, "avg_clear": true, "total_current": 6886, "total_required": 9000, "total_remaining": 2114, "pace_needed": 234.9, "status": "on_track"}}, {"key": "ふかさわ", "name": "ふかさわ", "rank": "七段", "rank_value": 11, "career": {"games": 108, "avg_place": 2.296, "last_avoid_rate": 0.843, "points": 27736, "top_count": 30}, "exam": {"rank": "七段", "rank_value": 11, "required_games": 18, "required_place": 2.15, "required_avg": 300, "played_games": 13, "avg_place": 1.846, "avg_score": 293.46, "place_sum": 24, "last_avoid_rate": 0.923, "remaining_games": 5, "place_clear": true, "avg_clear": false, "total_current": 3815, "total_required": 5400, "total_remaining": 1585, "pace_needed": 317.0, "status": "behind"}}, {"key": "ピンクマン", "name": "ピンクマン", "rank": "初段", "rank_value": 5, "career": {"games": 28, "avg_place": 2.5, "last_avoid_rate": 0.714, "points": 6934, "top_count": 8}, "exam": {"rank": "初段", "rank_value": 5, "required_games": 12, "required_place": 2.3, "required_avg": 280, "played_games": 10, "avg_place": 2.8, "avg_score": 188.6, "place_sum": 28, "last_avoid_rate": 0.5, "remaining_games": 2, "place_clear": false, "avg_clear": false, "total_current": 1886, "total_required": 3360, "total_remaining": 1474, "pace_needed": 737.0, "status": "behind"}}, {"key": "しば", "name": "しば", "rank": "三段", "rank_value": 7, "career": {"games": 95, "avg_place": 2.684, "last_avoid_rate": 0.716, "points": 20796, "top_count": 17}, "exam": {"rank": "三段", "rank_value": 7, "required_games": 15, "required_place": 2.28, "required_avg": 285, "played_games": 11, "avg_place": 2.909, "avg_score": 216.55, "place_sum": 32, "last_avoid_rate": 0.636, "remaining_games": 4, "place_clear": false, "avg_clear": false, "total_current": 2382, "total_required": 4275, "total_remaining": 1893, "pace_needed": 473.2, "status": "behind"}}, {"key": "おちょ", "name": "おちょ", "rank": "八段", "rank_value": 12, "career": {"games": 176, "avg_place": 2.483, "last_avoid_rate": 0.767, "points": 45256, "top_count": 49}, "exam": {"rank": "八段", "rank_value": 12, "required_games": 30, "required_place": 2.12, "required_avg": 300, "played_games": 16, "avg_place": 2.062, "avg_score": 312.62, "place_sum": 33, "last_avoid_rate": 0.938, "remaining_games": 14, "place_clear": true, "avg_clear": true, "total_current": 5002, "total_required": 9000, "total_remaining": 3998, "pace_needed": 285.6, "status": "on_track"}}, {"key": "おたろ", "name": "おたろ", "rank": "四段", "rank_value": 8, "career": {"games": 191, "avg_place": 2.419, "last_avoid_rate": 0.743, "points": 47970, "top_count": 59}, "exam": {"rank": "四段", "rank_value": 8, "required_games": 15, "required_place": 2.25, "required_avg": 290, "played_games": 10, "avg_place": 2.4, "avg_score": 289.2, "place_sum": 24, "last_avoid_rate": 0.7, "remaining_games": 5, "place_clear": false, "avg_clear": false, "total_current": 2892, "total_required": 4350, "total_remaining": 1458, "pace_needed": 291.6, "status": "behind"}}, {"key": "ぶらすにん", "name": "ぶらすにん", "rank": "初段", "rank_value": 5, "career": {"games": 9, "avg_place": 2.556, "last_avoid_rate": 0.778, "points": 1949, "top_count": 2}, "exam": {"rank": "初段", "rank_value": 5, "required_games": 12, "required_place": 2.3, "required_avg": 280, "played_games": 9, "avg_place": 2.556, "avg_score": 216.56, "place_sum": 23, "last_avoid_rate": 0.778, "remaining_games": 3, "place_clear": false, "avg_clear": false, "total_current": 1949, "total_required": 3360, "total_remaining": 1411, "pace_needed": 470.3, "status": "behind"}}, {"key": "あんへりか", "name": "あんへりか", "rank": "二段", "rank_value": 6, "career": {"games": 1, "avg_place": 4.0, "last_avoid_rate": 0.0, "points": -5, "top_count": 0}, "exam": {"rank": "二段", "rank_value": 6, "required_games": 12, "required_place": 2.3, "required_avg": 285, "played_games": 1, "avg_place": 4.0, "avg_score": -5.0, "place_sum": 4, "last_avoid_rate": 0.0, "remaining_games": 11, "place_clear": false, "avg_clear": false, "total_current": -5, "total_required": 3420, "total_remaining": 3425, "pace_needed": 311.4, "status": "behind"}}, {"key": "オコエ", "name": "オコエ", "rank": "1級", "rank_value": 4, "career": {"games": 25, "avg_place": 2.72, "last_avoid_rate": 0.64, "points": 5179, "top_count": 3}, "exam": {"rank": "1級", "rank_value": 4, "required_games": 9, "required_place": 2.35, "required_avg": 270, "played_games": 1, "avg_place": 4.0, "avg_score": -2.0, "place_sum": 4, "last_avoid_rate": 0.0, "remaining_games": 8, "place_clear": false, "avg_clear": false, "total_current": -2, "total_required": 2430, "total_remaining": 2432, "pace_needed": 304.0, "status": "behind"}}, {"key": "ゆー", "name": "ゆー", "rank": "四段", "rank_value": 8, "career": {"games": 43, "avg_place": 2.395, "last_avoid_rate": 0.791, "points": 10874, "top_count": 12}, "exam": {"rank": "四段", "rank_value": 8, "required_games": 15, "required_place": 2.25, "required_avg": 290, "played_games": 5, "avg_place": 2.0, "avg_score": 329.0, "place_sum": 10, "last_avoid_rate": 1.0, "remaining_games": 10, "place_clear": true, "avg_clear": true, "total_current": 1645, "total_required": 4350, "total_remaining": 2705, "pace_needed": 270.5, "status": "on_track"}}, {"key": "もみじ", "name": "もみじ", "rank": "六段", "rank_value": 10, "career": {"games": 178, "avg_place": 2.68, "last_avoid_rate": 0.68, "points": 40733, "top_count": 36}, "exam": {"rank": "六段", "rank_value": 10, "required_games": 18, "required_place": 2.17, "required_avg": 295, "played_games": 1, "avg_place": 4.0, "avg_score": 105.0, "place_sum": 4, "last_avoid_rate": 0.0, "remaining_games": 17, "place_clear": false, "avg_clear": false, "total_current": 105, "total_required": 5310, "total_remaining": 5205, "pace_needed": 306.2, "status": "behind"}}, {"key": "ヒグチ", "name": "ヒグチ", "rank": "七段", "rank_value": 11, "career": {"games": 48, "avg_place": 2.5, "last_avoid_rate": 0.854, "points": 12046, "top_count": 8}, "exam": {"rank": "七段", "rank_value": 11, "required_games": 18, "required_place": 2.15, "required_avg": 300, "played_games": 2, "avg_place": 1.0, "avg_score": 428.0, "place_sum": 2, "last_avoid_rate": 1.0, "remaining_games": 16, "place_clear": true, "avg_clear": true, "total_current": 856, "total_required": 5400, "total_remaining": 4544, "pace_needed": 284.0, "status": "on_track"}}, {"key": "まっち", "name": "まっち", "rank": "四段", "rank_value": 8, "career": {"games": 90, "avg_place": 2.667, "last_avoid_rate": 0.689, "points": 19878, "top_count": 16}, "exam": {"rank": "四段", "rank_value": 8, "required_games": 15, "required_place": 2.25, "required_avg": 290, "played_games": 2, "avg_place": 3.0, "avg_score": 182.0, "place_sum": 6, "last_avoid_rate": 0.5, "remaining_games": 13, "place_clear": false, "avg_clear": false, "total_current": 364, "total_required": 4350, "total_remaining": 3986, "pace_needed": 306.6, "status": "behind"}}, {"key": "わたあめ", "name": "わたあめ", "rank": "2級", "rank_value": 3, "career": {"games": 3, "avg_place": 2.333, "last_avoid_rate": 0.667, "points": 649, "top_count": 1}, "exam": {"rank": "2級", "rank_value": 3, "required_games": 6, "required_place": 2.4, "required_avg": 260, "played_games": 3, "avg_place": 2.333, "avg_score": 216.33, "place_sum": 7, "last_avoid_rate": 0.667, "remaining_games": 3, "place_clear": true, "avg_clear": false, "total_current": 649, "total_required": 1560, "total_remaining": 911, "pace_needed": 303.7, "status": "behind"}}, {"key": "さとぱん", "name": "さとぱん", "rank": "三段", "rank_value": 7, "career": {"games": 30, "avg_place": 2.8, "last_avoid_rate": 0.7, "points": 6338, "top_count": 3}, "exam": {"rank": "三段", "rank_value": 7, "required_games": 15, "required_place": 2.28, "required_avg": 285, "played_games": 7, "avg_place": 2.429, "avg_score": 303.43, "place_sum": 17, "last_avoid_rate": 0.714, "remaining_games": 8, "place_clear": false, "avg_clear": true, "total_current": 2124, "total_required": 4275, "total_remaining": 2151, "pace_needed": 268.9, "status": "behind"}}, {"key": "きょうこ", "name": "きょうこ", "rank": "六段", "rank_value": 10, "career": {"games": 44, "avg_place": 2.455, "last_avoid_rate": 0.818, "points": 11277, "top_count": 10}, "exam": {"rank": "六段", "rank_value": 10, "required_games": 18, "required_place": 2.17, "required_avg": 295, "played_games": 1, "avg_place": 3.0, "avg_score": 233.0, "place_sum": 3, "last_avoid_rate": 1.0, "remaining_games": 17, "place_clear": false, "avg_clear": false, "total_current": 233, "total_required": 5310, "total_remaining": 5077, "pace_needed": 298.6, "status": "behind"}}, {"key": "yuri", "name": "yuri", "rank": "八段", "rank_value": 12, "career": {"games": 158, "avg_place": 2.31, "last_avoid_rate": 0.797, "points": 44523, "top_count": 54}, "exam": {"rank": "八段", "rank_value": 12, "required_games": 30, "required_place": 2.12, "required_avg": 300, "played_games": 28, "avg_place": 2.071, "avg_score": 322.25, "place_sum": 58, "last_avoid_rate": 0.893, "remaining_games": 2, "place_clear": true, "avg_clear": true, "total_current": 9023, "total_required": 9000, "total_remaining": 0, "pace_needed": 0.0, "status": "on_track"}}, {"key": "yuya", "name": "yu-ya☆", "rank": "五段", "rank_value": 9, "career": {"games": 55, "avg_place": 2.309, "last_avoid_rate": 0.836, "points": 15458, "top_count": 19}, "exam": {"rank": "五段", "rank_value": 9, "required_games": 15, "required_place": 2.2, "required_avg": 290, "played_games": 11, "avg_place": 2.364, "avg_score": 260.45, "place_sum": 26, "last_avoid_rate": 0.818, "remaining_games": 4, "place_clear": false, "avg_clear": false, "total_current": 2865, "total_required": 4350, "total_remaining": 1485, "pace_needed": 371.2, "status": "behind"}}, {"key": "おでん", "name": "おでん", "rank": "4級", "rank_value": 1, "career": {"games": 5, "avg_place": 2.8, "last_avoid_rate": 0.4, "points": 882, "top_count": 2}, "exam": {"rank": "4級", "rank_value": 1, "required_games": 6, "required_place": 2.5, "required_avg": 250, "played_games": 5, "avg_place": 2.8, "avg_score": 176.4, "place_sum": 14, "last_avoid_rate": 0.4, "remaining_games": 1, "place_clear": false, "avg_clear": false, "total_current": 882, "total_required": 1500, "total_remaining": 618, "pace_needed": 618.0, "status": "behind"}}, {"key": "まるさん", "name": "まるさん", "rank": "七段", "rank_value": 11, "career": {"games": 61, "avg_place": 2.311, "last_avoid_rate": 0.787, "points": 16181, "top_count": 20}, "exam": {"rank": "七段", "rank_value": 11, "required_games": 18, "required_place": 2.15, "required_avg": 300, "played_games": 14, "avg_place": 2.143, "avg_score": 266.71, "place_sum": 30, "last_avoid_rate": 0.857, "remaining_games": 4, "place_clear": true, "avg_clear": false, "total_current": 3734, "total_required": 5400, "total_remaining": 1666, "pace_needed": 416.5, "status": "behind"}}, {"key": "どんちゃん", "name": "どんちゃん", "rank": "五段", "rank_value": 9, "career": {"games": 120, "avg_place": 2.767, "last_avoid_rate": 0.675, "points": 26966, "top_count": 18}, "exam": {"rank": "五段", "rank_value": 9, "required_games": 15, "required_place": 2.2, "required_avg": 290, "played_games": 12, "avg_place": 2.583, "avg_score": 245.08, "place_sum": 31, "last_avoid_rate": 0.833, "remaining_games": 3, "place_clear": false, "avg_clear": false, "total_current": 2941, "total_required": 4350, "total_remaining": 1409, "pace_needed": 469.7, "status": "behind"}}, {"key": "のん", "name": "のん", "rank": "二段", "rank_value": 6, "career": {"games": 20, "avg_place": 2.4, "last_avoid_rate": 0.85, "points": 4199, "top_count": 4}, "exam": {"rank": "二段", "rank_value": 6, "required_games": 12, "required_place": 2.3, "required_avg": 285, "played_games": 8, "avg_place": 2.75, "avg_score": 160.62, "place_sum": 22, "last_avoid_rate": 0.75, "remaining_games": 4, "place_clear": false, "avg_clear": false, "total_current": 1285, "total_required": 3420, "total_remaining": 2135, "pace_needed": 533.8, "status": "behind"}}, {"key": "あお", "name": "あお", "rank": "三段", "rank_value": 7, "career": {"games": 64, "avg_place": 2.391, "last_avoid_rate": 0.781, "points": 17454, "top_count": 19}, "exam": {"rank": "三段", "rank_value": 7, "required_games": 15, "required_place": 2.28, "required_avg": 285, "played_games": 4, "avg_place": 2.5, "avg_score": 235.25, "place_sum": 10, "last_avoid_rate": 1.0, "remaining_games": 11, "place_clear": false, "avg_clear": false, "total_current": 941, "total_required": 4275, "total_remaining": 3334, "pace_needed": 303.1, "status": "behind"}}, {"key": "こーじ", "name": "こーじ", "rank": "初段", "rank_value": 5, "career": {"games": 26, "avg_place": 2.423, "last_avoid_rate": 0.769, "points": 5977, "top_count": 8}, "exam": {"rank": "初段", "rank_value": 5, "required_games": 12, "required_place": 2.3, "required_avg": 280, "played_games": 2, "avg_place": 3.5, "avg_score": 176.5, "place_sum": 7, "last_avoid_rate": 0.5, "remaining_games": 10, "place_clear": false, "avg_clear": false, "total_current": 353, "total_required": 3360, "total_remaining": 3007, "pace_needed": 300.7, "status": "behind"}}, {"key": "にん", "name": "にん", "rank": "1級", "rank_value": 4, "career": {"games": 20, "avg_place": 2.45, "last_avoid_rate": 0.8, "points": 5304, "top_count": 5}, "exam": {"rank": "1級", "rank_value": 4, "required_games": 9, "required_place": 2.35, "required_avg": 270, "played_games": 2, "avg_place": 1.5, "avg_score": 439.5, "place_sum": 3, "last_avoid_rate": 1.0, "remaining_games": 7, "place_clear": true, "avg_clear": true, "total_current": 879, "total_required": 2430, "total_remaining": 1551, "pace_needed": 221.6, "status": "on_track"}}, {"key": "ななたま", "name": "ななたま", "rank": "初段", "rank_value": 5, "career": {"games": 62, "avg_place": 2.532, "last_avoid_rate": 0.677, "points": 15453, "top_count": 18}, "exam": {"rank": "初段", "rank_value": 5, "required_games": 12, "required_place": 2.3, "required_avg": 280, "played_games": 5, "avg_place": 3.0, "avg_score": 150.6, "place_sum": 15, "last_avoid_rate": 0.6, "remaining_games": 7, "place_clear": false, "avg_clear": false, "total_current": 753, "total_required": 3360, "total_remaining": 2607, "pace_needed": 372.4, "status": "behind"}}, {"key": "ひかる", "name": "ひかる", "rank": "段位", "rank_value": -1, "career": {"games": 0, "avg_place": null, "last_avoid_rate": null, "points": 0, "top_count": 0}, "exam": {"rank": null, "status": "unranked"}}, {"key": "ベルガ", "name": "ベルガモット", "rank": "1級", "rank_value": 4, "career": {"games": 24, "avg_place": 2.625, "last_avoid_rate": 0.708, "points": 5111, "top_count": 5}, "exam": {"rank": "1級", "rank_value": 4, "required_games": 9, "required_place": 2.35, "required_avg": 270, "played_games": 3, "avg_place": 3.667, "avg_score": 74.33, "place_sum": 11, "last_avoid_rate": 0.333, "remaining_games": 6, "place_clear": false, "avg_clear": false, "total_current": 223, "total_required": 2430, "total_remaining": 2207, "pace_needed": 367.8, "status": "behind"}}, {"key": "だーよし", "name": "だーよし", "rank": "3級", "rank_value": 2, "career": {"games": 5, "avg_place": 2.6, "last_avoid_rate": 0.6, "points": 1118, "top_count": 2}, "exam": {"rank": "3級", "rank_value": 2, "required_games": 6, "required_place": 2.45, "required_avg": 250, "played_games": 5, "avg_place": 2.6, "avg_score": 223.6, "place_sum": 13, "last_avoid_rate": 0.6, "remaining_games": 1, "place_clear": false, "avg_clear": false, "total_current": 1118, "total_required": 1500, "total_remaining": 382, "pace_needed": 382.0, "status": "behind"}}, {"key": "おつし", "name": "おつし", "rank": "3級", "rank_value": 2, "career": {"games": 10, "avg_place": 2.5, "last_avoid_rate": 0.8, "points": 2646, "top_count": 2}, "exam": {"rank": "3級", "rank_value": 2, "required_games": 6, "required_place": 2.45, "required_avg": 250, "played_games": 4, "avg_place": 2.5, "avg_score": 246.25, "place_sum": 10, "last_avoid_rate": 1.0, "remaining_games": 2, "place_clear": false, "avg_clear": false, "total_current": 985, "total_required": 1500, "total_remaining": 515, "pace_needed": 257.5, "status": "behind"}}, {"key": "zono", "name": "zono", "rank": "3級", "rank_value": 2, "career": {"games": 2, "avg_place": 2.0, "last_avoid_rate": 1.0, "points": 789, "top_count": 1}, "exam": {"rank": "3級", "rank_value": 2, "required_games": 6, "required_place": 2.45, "required_avg": 250, "played_games": 2, "avg_place": 2.0, "avg_score": 394.5, "place_sum": 4, "last_avoid_rate": 1.0, "remaining_games": 4, "place_clear": true, "avg_clear": true, "total_current": 789, "total_required": 1500, "total_remaining": 711, "pace_needed": 177.8, "status": "on_track"}}, {"key": "ウメ", "name": "ウメモト", "rank": "4級", "rank_value": 1, "career": {"games": 20, "avg_place": 2.5, "last_avoid_rate": 0.85, "points": 4757, "top_count": 2}, "exam": {"rank": "4級", "rank_value": 1, "required_games": 6, "required_place": 2.5, "required_avg": 250, "played_games": 2, "avg_place": 2.5, "avg_score": 185.5, "place_sum": 5, "last_avoid_rate": 1.0, "remaining_games": 4, "place_clear": true, "avg_clear": false, "total_current": 371, "total_required": 1500, "total_remaining": 1129, "pace_needed": 282.2, "status": "behind"}}, {"key": "こう", "name": "こうちゃん", "rank": "5級", "rank_value": 0, "career": {"games": 2, "avg_place": 3.0, "last_avoid_rate": 0.5, "points": 422, "top_count": 0}, "exam": {"rank": "5級", "rank_value": 0, "required_games": 6, "required_place": 2.55, "required_avg": 250, "played_games": 2, "avg_place": 3.0, "avg_score": 211.0, "place_sum": 6, "last_avoid_rate": 0.5, "remaining_games": 4, "place_clear": false, "avg_clear": false, "total_current": 422, "total_required": 1500, "total_remaining": 1078, "pace_needed": 269.5, "status": "behind"}}, {"key": "もりした", "name": "もりしたくん", "rank": "5級", "rank_value": 0, "career": {"games": 3, "avg_place": 3.0, "last_avoid_rate": 0.333, "points": 432, "top_count": 1}, "exam": {"rank": "5級", "rank_value": 0, "required_games": 6, "required_place": 2.55, "required_avg": 250, "played_games": 3, "avg_place": 3.0, "avg_score": 144.0, "place_sum": 9, "last_avoid_rate": 0.333, "remaining_games": 3, "place_clear": false, "avg_clear": false, "total_current": 432, "total_required": 1500, "total_remaining": 1068, "pace_needed": 356.0, "status": "behind"}}, {"key": "よっしー", "name": "よっしー", "rank": "4級", "rank_value": 1, "career": {"games": 6, "avg_place": 1.833, "last_avoid_rate": 1.0, "points": 2028, "top_count": 3}, "exam": {"rank": "4級", "rank_value": 1, "required_games": 6, "required_place": 2.5, "required_avg": 250, "played_games": 0, "avg_place": null, "avg_score": 0.0, "place_sum": 0, "last_avoid_rate": null, "remaining_games": 6, "place_clear": false, "avg_clear": false, "total_current": 0, "total_required": 1500, "total_remaining": 1500, "pace_needed": 250.0, "status": "not_started"}}, {"key": "ＲＭ", "name": "ＲＭ", "rank": "3級", "rank_value": 2, "career": {"games": 4, "avg_place": 2.5, "last_avoid_rate": 0.75, "points": 847, "top_count": 1}, "exam": {"rank": "3級", "rank_value": 2, "required_games": 6, "required_place": 2.45, "required_avg": 250, "played_games": 4, "avg_place": 2.5, "avg_score": 211.75, "place_sum": 10, "last_avoid_rate": 0.75, "remaining_games": 2, "place_clear": false, "avg_clear": false, "total_current": 847, "total_required": 1500, "total_remaining": 653, "pace_needed": 326.5, "status": "behind"}}, {"key": "ミナミ", "name": "ミナミ", "rank": "3級", "rank_value": 2, "career": {"games": 0, "avg_place": null, "last_avoid_rate": null, "points": 0, "top_count": 0}, "exam": {"rank": "3級", "rank_value": 2, "required_games": 6, "required_place": 2.45, "required_avg": 250, "played_games": 0, "avg_place": null, "avg_score": 0.0, "place_sum": 0, "last_avoid_rate": null, "remaining_games": 6, "place_clear": false, "avg_clear": false, "total_current": 0, "total_required": 1500, "total_remaining": 1500, "pace_needed": 250.0, "status": "not_started"}}, {"key": "大山", "name": "大山圭太", "rank": "3級", "rank_value": 2, "career": {"games": 6, "avg_place": 2.333, "last_avoid_rate": 0.833, "points": 1647, "top_count": 2}, "exam": {"rank": "3級", "rank_value": 2, "required_games": 6, "required_place": 2.45, "required_avg": 250, "played_games": 6, "avg_place": 2.333, "avg_score": 274.5, "place_sum": 14, "last_avoid_rate": 0.833, "remaining_games": 0, "place_clear": true, "avg_clear": true, "total_current": 1647, "total_required": 1500, "total_remaining": 0, "pace_needed": null, "status": "ready"}}, {"key": "なおと", "name": "なおと", "rank": "4級", "rank_value": 1, "career": {"games": 25, "avg_place": 2.92, "last_avoid_rate": 0.52, "points": 5668, "top_count": 5}, "exam": {"rank": "4級", "rank_value": 1, "required_games": 6, "required_place": 2.5, "required_avg": 250, "played_games": 1, "avg_place": 4.0, "avg_score": 43.0, "place_sum": 4, "last_avoid_rate": 0.0, "remaining_games": 5, "place_clear": false, "avg_clear": false, "total_current": 43, "total_required": 1500, "total_remaining": 1457, "pace_needed": 291.4, "status": "behind"}}, {"key": "瀬田", "name": "瀬田ちゃん", "rank": "初段", "rank_value": 5, "career": {"games": 29, "avg_place": 2.586, "last_avoid_rate": 0.69, "points": 6707, "top_count": 6}, "exam": {"rank": "初段", "rank_value": 5, "required_games": 12, "required_place": 2.3, "required_avg": 280, "played_games": 5, "avg_place": 3.0, "avg_score": 207.4, "place_sum": 15, "last_avoid_rate": 0.6, "remaining_games": 7, "place_clear": false, "avg_clear": false, "total_current": 1037, "total_required": 3360, "total_remaining": 2323, "pace_needed": 331.9, "status": "behind"}}, {"key": "レオノ", "name": "レオノ", "rank": "4級", "rank_value": 1, "career": {"games": 0, "avg_place": null, "last_avoid_rate": null, "points": 0, "top_count": 0}, "exam": {"rank": "4級", "rank_value": 1, "required_games": 6, "required_place": 2.5, "required_avg": 250, "played_games": 0, "avg_place": null, "avg_score": 0.0, "place_sum": 0, "last_avoid_rate": null, "remaining_games": 6, "place_clear": false, "avg_clear": false, "total_current": 0, "total_required": 1500, "total_remaining": 1500, "pace_needed": 250.0, "status": "not_started"}}, {"key": "さとる", "name": "さとる", "rank": "4級", "rank_value": 1, "career": {"games": 0, "avg_place": null, "last_avoid_rate": null, "points": 0, "top_count": 0}, "exam": {"rank": "4級", "rank_value": 1, "required_games": 6, "required_place": 2.5, "required_avg": 250, "played_games": 0, "avg_place": null, "avg_score": 0.0, "place_sum": 0, "last_avoid_rate": null, "remaining_games": 6, "place_clear": false, "avg_clear": false, "total_current": 0, "total_required": 1500, "total_remaining": 1500, "pace_needed": 250.0, "status": "not_started"}}, {"key": "jyukia", "name": "jyukia", "rank": "3級", "rank_value": 2, "career": {"games": 14, "avg_place": 2.429, "last_avoid_rate": 0.786, "points": 3292, "top_count": 4}, "exam": {"rank": "3級", "rank_value": 2, "required_games": 6, "required_place": 2.45, "required_avg": 250, "played_games": 2, "avg_place": 3.0, "avg_score": 172.5, "place_sum": 6, "last_avoid_rate": 0.5, "remaining_games": 4, "place_clear": false, "avg_clear": false, "total_current": 345, "total_required": 1500, "total_remaining": 1155, "pace_needed": 288.8, "status": "behind"}}, {"key": "いとちん", "name": "いとちん", "rank": "5級", "rank_value": 0, "career": {"games": 3, "avg_place": 2.667, "last_avoid_rate": 0.667, "points": 1139, "top_count": 1}, "exam": {"rank": "5級", "rank_value": 0, "required_games": 6, "required_place": 2.55, "required_avg": 250, "played_games": 3, "avg_place": 2.667, "avg_score": 379.67, "place_sum": 8, "last_avoid_rate": 0.667, "remaining_games": 3, "place_clear": false, "avg_clear": true, "total_current": 1139, "total_required": 1500, "total_remaining": 361, "pace_needed": 120.3, "status": "behind"}}, {"key": "むう", "name": "むう", "rank": "5級", "rank_value": 0, "career": {"games": 15, "avg_place": 2.733, "last_avoid_rate": 0.8, "points": 3280, "top_count": 2}, "exam": {"rank": "5級", "rank_value": 0, "required_games": 6, "required_place": 2.55, "required_avg": 250, "played_games": 3, "avg_place": 2.0, "avg_score": 270.67, "place_sum": 6, "last_avoid_rate": 1.0, "remaining_games": 3, "place_clear": true, "avg_clear": true, "total_current": 812, "total_required": 1500, "total_remaining": 688, "pace_needed": 229.3, "status": "on_track"}}, {"key": "りょうま", "name": "りょうま", "rank": "5級", "rank_value": 0, "career": {"games": 6, "avg_place": 3.5, "last_avoid_rate": 0.5, "points": 578, "top_count": 0}, "exam": {"rank": "5級", "rank_value": 0, "required_games": 6, "required_place": 2.55, "required_avg": 250, "played_games": 6, "avg_place": 3.5, "avg_score": 96.33, "place_sum": 21, "last_avoid_rate": 0.5, "remaining_games": 0, "place_clear": false, "avg_clear": false, "total_current": 578, "total_required": 1500, "total_remaining": 922, "pace_needed": null, "status": "reset_pending"}}, {"key": "ベティ", "name": "ベティちゃん", "rank": "二段", "rank_value": 6, "career": {"games": 54, "avg_place": 2.389, "last_avoid_rate": 0.796, "points": 14561, "top_count": 12}, "exam": {"rank": "二段", "rank_value": 6, "required_games": 12, "required_place": 2.3, "required_avg": 285, "played_games": 6, "avg_place": 3.0, "avg_score": 203.5, "place_sum": 18, "last_avoid_rate": 0.5, "remaining_games": 6, "place_clear": false, "avg_clear": false, "total_current": 1221, "total_required": 3420, "total_remaining": 2199, "pace_needed": 366.5, "status": "behind"}}, {"key": "あき", "name": "あき", "rank": "5級", "rank_value": 0, "career": {"games": 2, "avg_place": 3.0, "last_avoid_rate": 0.5, "points": 303, "top_count": 0}, "exam": {"rank": "5級", "rank_value": 0, "required_games": 6, "required_place": 2.55, "required_avg": 250, "played_games": 2, "avg_place": 3.0, "avg_score": 151.5, "place_sum": 6, "last_avoid_rate": 0.5, "remaining_games": 4, "place_clear": false, "avg_clear": false, "total_current": 303, "total_required": 1500, "total_remaining": 1197, "pace_needed": 299.2, "status": "behind"}}]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('rawData').textContent);
+const RANK_ORDER = DATA.rank_order;
+const players = DATA.players;
+
+function rankTier(rank){
+  if(!rank) return '#8a6a3d';
+  if(rank.includes('九段')) return '#a8322c';
+  if(rank.includes('八段')||rank.includes('七段')) return '#b8860b';
+  if(rank.includes('六段')||rank.includes('五段')) return '#8a6a20';
+  if(rank.includes('段')) return '#1f6b3a';
+  if(rank.includes('1級')||rank.includes('2級')) return '#5b6b7c';
+  if(rank.includes('級')) return '#8a8a8a';
+  return '#8a6a3d';
+}
+
+function fmt(v, digits){
+  if(v===null || v===undefined || isNaN(v)) return '—';
+  return v.toFixed(digits);
+}
+function fmtPts(v){
+  if(v===null||v===undefined) return '—';
+  const sign = v>0?'+':'';
+  return sign + v.toFixed(1);
+}
+
+const STATUS_LABEL = {
+  ready:'合格ライン到達', on_track:'基準クリア中', behind:'追い上げ中',
+  reset_pending:'要再挑戦', not_started:'審査開始前', unranked:'未認定',
+};
+
+let selectedKey = null;
+let activePlayers = players.filter(p=>p.rank_value>=0);
+
+function renderStatbar(){
+  const n = activePlayers.length;
+  const totalGames = activePlayers.reduce((a,p)=>a+(p.career.games||0),0);
+  const readyCount = activePlayers.filter(p=>p.exam && p.exam.status==='ready').length;
+  const onTrackCount = activePlayers.filter(p=>p.exam && p.exam.status==='on_track').length;
+  document.getElementById('statbar').innerHTML = `
+    <div class="stat"><div class="n">${n}</div><div class="l">在籍人数</div></div>
+    <div class="stat"><div class="n">${totalGames}</div><div class="l">累計半荘数（全員）</div></div>
+    <div class="stat"><div class="n">${readyCount}</div><div class="l">合格ライン到達中</div></div>
+    <div class="stat"><div class="n">${onTrackCount}</div><div class="l">基準クリア継続中</div></div>
+  `;
+}
+
+function renderPicker(){
+  const sel = document.getElementById('playerSelect');
+  const sorted = [...players].sort((a,b)=> b.rank_value - a.rank_value || a.name.localeCompare(b.name,'ja'));
+  sel.innerHTML = sorted.map(p=>`<option value="${p.key}">${p.name}（${p.rank}）</option>`).join('');
+  sel.addEventListener('change', ()=>{ selectedKey = sel.value; renderExamCard(); highlightRow(); });
+  if(!selectedKey) selectedKey = sorted[0].key;
+  sel.value = selectedKey;
+}
+
+const PLACE_LABEL = {1:'トップ', 2:'二着', 3:'三着', 4:'ラス'};
+
+function placeExampleHtml(ex){
+  const remaining = ex.remaining_games;
+  const placeSum = ex.avg_place!==null ? ex.place_sum : 0;
+  const budget = ex.required_place * ex.required_games - placeSum;
+
+  if(budget < remaining * 1 - 1e-9){
+    return `<div class="pacebox placebox">着順基準：残り${remaining}半荘では、全対局トップを取っても平均着順の基準到達は数値上厳しい状況です。早めのペースアップが必要です。</div>`;
+  }
+  if(budget >= remaining * 4 - 1e-9){
+    return `<div class="pacebox placebox">着順基準：残り${remaining}半荘は着順を問わず基準内に収まります（ポイント基準のみ意識すればOK）。</div>`;
+  }
+  let lower = Math.floor(budget / remaining);
+  lower = Math.max(1, Math.min(3, lower));
+  const higher = lower + 1;
+  let nHigher = Math.floor(budget - remaining * lower + 1e-9);
+  nHigher = Math.max(0, Math.min(remaining, nHigher));
+  const nLower = remaining - nHigher;
+  const counts = {1:0,2:0,3:0,4:0};
+  counts[lower] += nLower;
+  counts[higher] += nHigher;
+  const parts = [1,2,3,4].map(k => `${PLACE_LABEL[k]}${counts[k]}回`).join('　');
+  return `<div class="pacebox placebox">着順基準：残り${remaining}半荘の一例として、<b>${parts}</b> のペースならセーフ（平均着順${ex.required_place}以内を維持できます）。</div>`;
+}
+
+function simulatorHtml(ex){
+  if(!ex.remaining_games || ex.remaining_games <= 0) return '';
+  return `
+  <div class="simulator" id="simulator">
+    <div class="simtitle">着順基準シミュレーター　（残り ${ex.remaining_games} 半荘のうち、想定回数を入力）</div>
+    <div class="siminputs">
+      <div class="simcol"><label>トップ</label><input type="number" min="0" id="sim-1" value="0"></div>
+      <div class="simcol"><label>二着</label><input type="number" min="0" id="sim-2" value="0"></div>
+      <div class="simcol"><label>三着</label><input type="number" min="0" id="sim-3" value="0"></div>
+      <div class="simcol"><label>ラス</label><input type="number" min="0" id="sim-4" value="0"></div>
+    </div>
+    <div class="simresult" id="simresult"></div>
+    <button class="simreset" id="simreset">入力をリセット</button>
+  </div>`;
+}
+
+function bindSimulator(ex){
+  if(!ex.remaining_games || ex.remaining_games <= 0) return;
+  const ids = [1,2,3,4].map(k=>document.getElementById('sim-'+k));
+  const box = document.getElementById('simulator');
+  const resultEl = document.getElementById('simresult');
+  const cap = ex.remaining_games;
+
+  ids.forEach(el => el.setAttribute('max', cap));
+
+  function clampField(changedEl){
+    let counts = ids.map(el => Math.max(0, parseInt(el.value)||0));
+    let total = counts.reduce((a,b)=>a+b,0);
+    if(total > cap){
+      const idx = ids.indexOf(changedEl);
+      const excess = total - cap;
+      counts[idx] = Math.max(0, counts[idx] - excess);
+      changedEl.value = counts[idx];
+    } else {
+      changedEl.value = counts[ids.indexOf(changedEl)];
+    }
+    const newCounts = ids.map(el => Math.max(0, parseInt(el.value)||0));
+    const newTotal = newCounts.reduce((a,b)=>a+b,0);
+    ids.forEach((el,i) => el.setAttribute('max', cap - (newTotal - newCounts[i])));
+  }
+
+  function update(){
+    const counts = ids.map(el => Math.max(0, parseInt(el.value)||0));
+    const entered = counts.reduce((a,b)=>a+b,0);
+    const enteredSum = counts[0]*1 + counts[1]*2 + counts[2]*3 + counts[3]*4;
+    const combinedGames = (ex.played_games||0) + entered;
+    const combinedSum = (ex.place_sum||0) + enteredSum;
+    const combinedAvg = combinedGames>0 ? combinedSum/combinedGames : null;
+    const clear = combinedGames>0 && combinedAvg <= ex.required_place;
+
+    box.classList.remove('safe','unsafe');
+    box.classList.add(clear ? 'safe':'unsafe');
+
+    let note = '';
+    if(entered !== cap){
+      note = `<br><span style="opacity:.7;">入力合計 ${entered} / 残り${cap}半荘（あと${cap-entered}半荘分入力できます）</span>`;
+    } else {
+      note = `<br><span style="opacity:.7;">入力合計 ${entered} / 残り${cap}半荘（上限まで入力済み）</span>`;
+    }
+    resultEl.innerHTML = `入力後の平均着順：<b>${combinedGames>0? combinedAvg.toFixed(3):'—'}</b>　／　基準 ${ex.required_place}以内　→　`
+      + (clear ? '<b style="color:var(--green-dragon);">クリア</b>' : '<b style="color:var(--red);">未達</b>')
+      + note;
+  }
+
+  ids.forEach(el => el.addEventListener('input', ()=>{ clampField(el); update(); }));
+  document.getElementById('simreset').addEventListener('click', ()=>{
+    ids.forEach(el => { el.value = 0; el.setAttribute('max', cap); });
+    update();
+  });
+  update();
+}
+
+function statsTwoPanels(p, ex){
+  const c = p.career || {};
+  const avoidC = c.last_avoid_rate!==null && c.last_avoid_rate!==undefined ? Math.round(c.last_avoid_rate*100)+'%' : '—';
+  const avoidP = ex.last_avoid_rate!==null && ex.last_avoid_rate!==undefined ? Math.round(ex.last_avoid_rate*100)+'%' : '—';
+  return `
+  <div class="stats-two">
+    <div class="stats-panel">
+      <div class="ptitle career">累計成績</div>
+      <div class="pgrid">
+        <div><b>${c.games||0}</b>累計半荘数</div>
+        <div><b>${fmt(c.avg_place,2)}</b>累計平均着順</div>
+        <div><b>${avoidC}</b>累計ラス回避率</div>
+        <div><b>${fmtPts(c.points)}</b>累計ポイント</div>
+      </div>
+    </div>
+    <div class="stats-panel">
+      <div class="ptitle period">期間内成績</div>
+      <div class="pgrid">
+        <div><b>${ex.played_games||0}</b>期間内半荘数</div>
+        <div><b>${fmt(ex.avg_place,2)}</b>期間内平均着順</div>
+        <div><b>${avoidP}</b>期間内ラス回避率</div>
+        <div><b>${fmtPts(ex.total_current)}</b>期間内ポイント</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderExamCard(){
+  const p = players.find(x=>x.key===selectedKey);
+  const el = document.getElementById('examcard');
+  if(!p){ el.innerHTML = '<div class="empty">打ち手を選択してください</div>'; return; }
+  const ex = p.exam;
+
+  if(!ex || ex.status==='unranked'){
+    el.innerHTML = `
+      <div class="exam-head">
+        <div class="exam-name">${p.name}</div>
+        <div class="exam-badges"><span class="statusbadge unranked">未認定</span></div>
+      </div>
+      <div class="exam-msg">まだ段位が設定されていません。対局を開始すると五級からの審査がスタートします。</div>
+      ${statsTwoPanels(p, {played_games:0, avg_place:null, last_avoid_rate:null, total_current:0})}
+    `;
+    return;
+  }
+
+  const tier = rankTier(ex.rank);
+  const tiles = Array.from({length: ex.required_games}, (_,i)=>
+    `<div class="t ${i < ex.played_games ? 'done':''}"></div>`
+  ).join('');
+
+  let msg = '';
+  if(ex.status==='not_started'){
+    msg = `直近の昇段によりこの段位の判定はリセットされました。次の対局から ${ex.required_games} 半荘の審査が始まります。`;
+  } else if(ex.status==='ready'){
+    msg = `規定打数 ${ex.required_games} 半荘を消化し、平均着順・平均収支ともに基準を満たしています。昇段確定ラインに到達しました。`;
+  } else if(ex.status==='reset_pending'){
+    msg = `規定打数 ${ex.required_games} 半荘を消化しましたが、基準未達のため次の対局から打数がリセットされ再挑戦となります。`;
+  } else {
+    msg = `現在 ${ex.played_games} / ${ex.required_games} 半荘を消化中です。残り ${ex.remaining_games} 半荘で基準クリアを目指しましょう。`;
+  }
+
+  const placeTag = ex.played_games>0 ? (ex.place_clear ? '<span class="mtag clear">クリア中</span>' : '<span class="mtag notclear">未達</span>') : '';
+  const avgTag = ex.played_games>0 ? (ex.avg_clear ? '<span class="mtag clear">クリア中</span>' : '<span class="mtag notclear">未達</span>') : '';
+
+  let paceHtml = '';
+  if(ex.remaining_games > 0){
+    if(ex.total_remaining > 0){
+      paceHtml = `<div class="pacebox">残り <b>${ex.remaining_games}半荘</b> で、1半荘あたり平均 <b>${fmtPts(ex.pace_needed)}</b> 以上のペースが必要です。（不足累計: ${fmtPts(-ex.total_remaining)}）</div>`;
+    } else {
+      paceHtml = `<div class="pacebox">必要累計ポイントは既に確保できています。残り <b>${ex.remaining_games}半荘</b> を消化すれば昇段判定です（平均着順の基準維持にご注意ください）。</div>`;
+    }
+    paceHtml += placeExampleHtml(ex);
+  }
+
+  el.innerHTML = `
+    <div class="exam-head">
+      <div class="exam-name">${p.name}</div>
+      <div class="exam-badges">
+        <span class="rankbadge" style="background:${tier}">${ex.rank} 昇段審査中</span>
+        <span class="statusbadge ${ex.status}">${STATUS_LABEL[ex.status]}</span>
+      </div>
+    </div>
+    <div class="exam-msg">${msg}</div>
+    <div class="tilewall">
+      <div class="lbl">半荘進捗　${ex.played_games} / ${ex.required_games}</div>
+      ${tiles}
+    </div>
+    <div class="metrics">
+      <div class="metric">
+        <div class="mlabel"><span>平均着順（${ex.required_place}以内）</span>${placeTag}</div>
+        <div class="mval">${fmt(ex.avg_place,3)}<span class="req">/ 基準 ${ex.required_place}</span></div>
+      </div>
+      <div class="metric">
+        <div class="mlabel"><span>平均収支（${ex.required_avg}以上）</span>${avgTag}</div>
+        <div class="mval">${fmt(ex.avg_score,1)}<span class="req">/ 基準 ${ex.required_avg}</span></div>
+      </div>
+    </div>
+    ${paceHtml}
+    ${simulatorHtml(ex)}
+    ${statsTwoPanels(p, ex)}
+  `;
+  bindSimulator(ex);
+}
+
+const sortOptions = [
+  {key:'rank_value', label:'段位順', dir:-1},
+  {key:'points', label:'ポイント順', dir:-1},
+  {key:'avg_place', label:'平均着順順', dir:1},
+  {key:'games', label:'半荘数順', dir:-1},
+];
+let sortKey = 'rank_value';
+let sortDir = -1;
+
+function renderSortButtons(){
+  const el = document.getElementById('sortbtns');
+  el.innerHTML = sortOptions.map(o=>`<button data-key="${o.key}" data-dir="${o.dir}">${o.label}</button>`).join('');
+  el.querySelectorAll('button').forEach(btn=>{
+    if(btn.dataset.key===sortKey) btn.classList.add('active');
+    btn.addEventListener('click', ()=>{
+      sortKey = btn.dataset.key; sortDir = parseInt(btn.dataset.dir);
+      el.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      renderRows();
+    });
+  });
+}
+
+function highlightRow(){
+  document.querySelectorAll('.row[data-key]').forEach(r=>{
+    r.classList.toggle('selected', r.dataset.key===selectedKey);
+  });
+}
+
+function playerSortValue(p, key){
+  if(key==='rank_value') return p.rank_value;
+  if(key==='points') return p.career.points;
+  if(key==='avg_place') return p.career.avg_place;
+  if(key==='games') return p.career.games;
+  return 0;
+}
+
+function renderRows(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  let list = activePlayers.filter(p=>p.name.toLowerCase().includes(q));
+  list.sort((a,b)=>{
+    let av = playerSortValue(a, sortKey), bv = playerSortValue(b, sortKey);
+    if(av===null) av = -Infinity;
+    if(bv===null) bv = -Infinity;
+    if(av===bv) return (b.career.points||0) - (a.career.points||0);
+    return (av-bv) * sortDir;
+  });
+  const rowsEl = document.getElementById('rows');
+  if(list.length===0){ rowsEl.innerHTML = '<div class="empty">該当する打ち手が見つかりません</div>'; return; }
+  rowsEl.innerHTML = list.map((p,i)=>{
+    const tier = rankTier(p.rank);
+    const status = p.exam ? p.exam.status : 'unranked';
+    return `
+    <div class="row" data-key="${p.key}">
+      <div class="rk">${i+1}</div>
+      <div class="nm">${p.name}</div>
+      <div><span class="badge" style="background:${tier}">${p.rank}</span></div>
+      <div class="num col-place">${fmt(p.career.avg_place,2)}</div>
+      <div class="num">${p.career.games||0}</div>
+      <div class="st col-status ${status}">${STATUS_LABEL[status]}</div>
+    </div>`;
+  }).join('');
+  rowsEl.querySelectorAll('.row').forEach(r=>{
+    r.addEventListener('click', ()=>{
+      selectedKey = r.dataset.key;
+      document.getElementById('playerSelect').value = selectedKey;
+      renderExamCard();
+      highlightRow();
+      document.getElementById('examcard').scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  });
+  highlightRow();
+}
+
+document.getElementById('search').addEventListener('input', renderRows);
+
+renderStatbar();
+renderPicker();
+renderExamCard();
+renderSortButtons();
+renderRows();
+</script>
+</body>
+</html>
