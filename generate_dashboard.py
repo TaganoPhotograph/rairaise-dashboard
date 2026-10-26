@@ -407,6 +407,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   .row.selected{outline:2px solid var(--gold);}
   .row.head{background:transparent;border:none;color:rgba(255,255,255,.5);font-size:.64rem;letter-spacing:.08em;padding:2px 12px 8px;margin-bottom:0;cursor:default;}
   .row.head:hover{transform:none;}
+  .row.head .num{color:inherit;}
   .row .rk{font-family:'Shippori Mincho', serif;font-weight:800;font-size:.95rem;color:var(--ink-soft);text-align:center;}
   .row .nm{font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .row .badge{justify-self:start;font-size:.66rem;padding:3px 9px;border-radius:20px;color:#fff;text-align:center;white-space:nowrap;}
@@ -422,13 +423,100 @@ TEMPLATE = r"""<!DOCTYPE html>
   .empty{text-align:center;color:rgba(255,255,255,.5);padding:40px;font-size:.85rem;}
   footer{text-align:center;color:rgba(255,255,255,.35);font-size:.7rem;margin-top:40px;letter-spacing:.05em;}
 
+  /* ---- simulator stepper (+/-) ---- */
+  .stepper{display:flex; align-items:stretch; gap:4px;}
+  .stepper button{
+    flex:0 0 30px; border:1px solid var(--tile-edge); background:#efe6cd; color:var(--ink);
+    border-radius:8px; font-size:1.1rem; font-weight:700; line-height:1; cursor:pointer;
+    padding:0; touch-action:manipulation;
+  }
+  .stepper button:active{background:var(--tile-edge);}
+  .stepper input{min-width:0;}
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
+  .stepper input[type=number]{-moz-appearance:textfield;}
+
+  html{-webkit-text-size-adjust:100%;}
+  body{-webkit-tap-highlight-color:transparent;}
+  @media (hover:none){
+    .row:hover{transform:none;}
+    .sortbtns button:hover{background:rgba(255,255,255,.08);}
+  }
+
+  /* ---- tablet / small laptop ---- */
   @media (max-width:720px){
     .statbar{grid-template-columns:repeat(2,1fr);}
-    .metrics{grid-template-columns:1fr;}
     .stats-two{grid-template-columns:1fr;}
-    .row{grid-template-columns:30px 1fr 60px 60px;}
-    .row .col-place, .row .col-status{display:none;}
-    .row.head .col-place, .row.head .col-status{display:none;}
+  }
+
+  /* ---- smartphone ---- */
+  @media (max-width:600px){
+    body{padding-bottom:48px;}
+    .wrap{padding:12px 14px 0;}
+    header.plaque{padding:18px 0 20px;}
+    .kanban{padding:14px 26px;}
+    .kanban h1{font-size:1.9rem; letter-spacing:.1em; white-space:nowrap;}
+    .kanban .sub{font-size:.74rem; letter-spacing:.14em;}
+    .updated{margin-top:10px;}
+
+    .statbar{gap:8px; margin-bottom:28px;}
+    .stat{padding:10px 6px;}
+    .stat .n{font-size:1.3rem;}
+
+    h2.section-title{margin-bottom:14px;}
+    .picker{margin-bottom:14px;}
+    .picker select{width:100%; min-width:0; font-size:16px; padding:11px 16px;}
+
+    .examcard{padding:18px 14px 16px; border-radius:14px; margin-bottom:34px;}
+    .exam-head{margin-bottom:10px; gap:8px;}
+    .exam-name{font-size:1.3rem;}
+    .exam-msg{margin-bottom:14px;}
+
+    .tilewall{gap:3px; margin-bottom:16px;}
+    .tilewall .t{width:15px; height:20px;}
+
+    .metrics{gap:8px; margin-bottom:12px;}
+    .metric{padding:10px 10px;}
+    .metric .mlabel{flex-direction:column; align-items:flex-start; gap:4px;}
+    .metric .mval{font-size:1.25rem;}
+    .metric .mval .req{display:block; margin:2px 0 0;}
+
+    .pacebox{padding:10px 12px;}
+    .simulator{padding:14px 12px;}
+    .simulator .siminputs{grid-template-columns:repeat(2,1fr); gap:10px 12px;}
+    .stepper button{flex-basis:40px; font-size:1.25rem;}
+    .simulator .simcol input{font-size:1.2rem; padding:9px 2px;}
+    .simulator .simreset{font-size:.76rem; padding:7px 14px;}
+
+    .stats-two{gap:10px; margin-top:14px; padding-top:14px;}
+    .stats-panel{padding:10px 10px 8px;}
+    .stats-panel .pgrid{grid-template-columns:repeat(4,1fr); gap:6px 4px;}
+    .stats-panel .pgrid > div{font-size:.6rem; line-height:1.3;}
+    .stats-panel .pgrid b{font-size:.95rem;}
+
+    .controls{flex-direction:column; align-items:stretch; gap:10px;}
+    .sortbtns{flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px;}
+    .sortbtns::-webkit-scrollbar{display:none;}
+    .sortbtns button{flex:0 0 auto; padding:8px 13px;}
+    .searchbox{padding:8px 14px;}
+    .searchbox input{width:100%; font-size:16px;}
+
+    .board{padding:6px;}
+    .row.head{display:none;}
+    .row{
+      grid-template-columns:30px auto auto 1fr;
+      grid-template-areas:"rk nm nm badge" "rk place games st";
+      gap:4px 10px; padding:10px 12px; font-size:.86rem;
+    }
+    .row .rk{grid-area:rk;}
+    .row .nm{grid-area:nm;}
+    .row > div:nth-child(3){grid-area:badge; justify-self:end;}
+    .row .col-place{grid-area:place;}
+    .row .col-games{grid-area:games;}
+    .row .col-status{grid-area:st;}
+    .row .col-place, .row .col-games{text-align:left; font-size:.72rem; color:var(--ink-soft);}
+    .row .col-place::before{content:"平均着順 ";}
+    .row .col-games::before{content:"半荘 ";}
+    .row .col-place b, .row .col-games b{color:var(--ink); font-size:.82rem;}
   }
 </style>
 </head>
@@ -462,7 +550,7 @@ TEMPLATE = r"""<!DOCTYPE html>
       <div>名前</div>
       <div>段位</div>
       <div class="num col-place">平均着順</div>
-      <div class="num">半荘</div>
+      <div class="num col-games">半荘</div>
       <div class="col-status" style="text-align:right;">審査状況</div>
     </div>
     <div id="rows"></div>
@@ -560,10 +648,14 @@ function simulatorHtml(ex){
   <div class="simulator" id="simulator">
     <div class="simtitle">着順基準シミュレーター　（残り ${ex.remaining_games} 半荘のうち、想定回数を入力）</div>
     <div class="siminputs">
-      <div class="simcol"><label>トップ</label><input type="number" min="0" id="sim-1" value="0"></div>
-      <div class="simcol"><label>二着</label><input type="number" min="0" id="sim-2" value="0"></div>
-      <div class="simcol"><label>三着</label><input type="number" min="0" id="sim-3" value="0"></div>
-      <div class="simcol"><label>ラス</label><input type="number" min="0" id="sim-4" value="0"></div>
+      ${[1,2,3,4].map(k=>`
+      <div class="simcol"><label for="sim-${k}">${PLACE_LABEL[k]}</label>
+        <div class="stepper">
+          <button type="button" class="step" data-k="${k}" data-d="-1" aria-label="${PLACE_LABEL[k]}を1減らす">−</button>
+          <input type="number" min="0" inputmode="numeric" pattern="[0-9]*" id="sim-${k}" value="0">
+          <button type="button" class="step" data-k="${k}" data-d="1" aria-label="${PLACE_LABEL[k]}を1増やす">＋</button>
+        </div>
+      </div>`).join('')}
     </div>
     <div class="simresult" id="simresult"></div>
     <button class="simreset" id="simreset">入力をリセット</button>
@@ -619,6 +711,11 @@ function bindSimulator(ex){
   }
 
   ids.forEach(el => el.addEventListener('input', ()=>{ clampField(el); update(); }));
+  box.querySelectorAll('button.step').forEach(btn => btn.addEventListener('click', ()=>{
+    const el = ids[parseInt(btn.dataset.k)-1];
+    el.value = Math.max(0, (parseInt(el.value)||0) + parseInt(btn.dataset.d));
+    clampField(el); update();
+  }));
   document.getElementById('simreset').addEventListener('click', ()=>{
     ids.forEach(el => { el.value = 0; el.setAttribute('max', cap); });
     update();
@@ -787,8 +884,8 @@ function renderRows(){
       <div class="rk">${i+1}</div>
       <div class="nm">${p.name}</div>
       <div><span class="badge" style="background:${tier}">${p.rank}</span></div>
-      <div class="num col-place">${fmt(p.career.avg_place,2)}</div>
-      <div class="num">${p.career.games||0}</div>
+      <div class="num col-place"><b>${fmt(p.career.avg_place,2)}</b></div>
+      <div class="num col-games"><b>${p.career.games||0}</b></div>
       <div class="st col-status ${status}">${STATUS_LABEL[status]}</div>
     </div>`;
   }).join('');
@@ -798,7 +895,7 @@ function renderRows(){
       document.getElementById('playerSelect').value = selectedKey;
       renderExamCard();
       highlightRow();
-      document.getElementById('examcard').scrollIntoView({behavior:'smooth', block:'center'});
+      document.getElementById('examcard').scrollIntoView({behavior:'smooth', block:'start'});
     });
   });
   highlightRow();
