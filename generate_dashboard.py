@@ -193,6 +193,12 @@ def extract(xlsx_path):
         else:
             exam = {"rank": None, "status": "unranked"}
 
+        # 着順別の平均素点（シミュレーターの収支推定に使う）
+        place_avg_score = {}
+        for k in (1, 2, 3, 4):
+            ss = [g["score"] for g in all_games if g["place"] == k]
+            place_avg_score[k] = {"avg": round(sum(ss) / len(ss), 1) if ss else None, "n": len(ss)}
+
         players.append({
             "key": key,
             "name": name,
@@ -204,6 +210,10 @@ def extract(xlsx_path):
                 "last_avoid_rate": career["last_avoid_rate"],
                 "points": round(career["total_score"], 1),
                 "top_count": career_top,
+                # 全半荘の推移（古い順）。成績推移グラフに使う
+                "places": [g["place"] for g in all_games],
+                "scores": [round(g["score"], 1) for g in all_games],
+                "place_avg_score": place_avg_score,
             },
             "exam": exam,
         })
@@ -214,7 +224,63 @@ def extract(xlsx_path):
             f"キャッシュ切れのため個人タブ(C4/C12)から直接補完しました。"
         )
 
-    return {"rank_order": RANK_ORDER, "rank_req": rank_req, "players": players}, warnings
+    # サークル全体の着順別平均素点（本人のデータが少ないときの補完用）
+    circle_place_avg = {}
+    for k in (1, 2, 3, 4):
+        tot = sum((p["career"]["place_avg_score"][k]["avg"] or 0) * p["career"]["place_avg_score"][k]["n"] for p in players)
+        cnt = sum(p["career"]["place_avg_score"][k]["n"] for p in players)
+        circle_place_avg[k] = round(tot / cnt, 1) if cnt else None
+
+    return {"rank_order": RANK_ORDER, "rank_req": rank_req, "players": players,
+            "circle_place_avg": circle_place_avg}, warnings
+
+
+REACH_REMAINING = 3  # 「昇段リーチ」とみなす残り半荘数（基準クリア中かつ残りこの数以下）
+
+
+def load_prev_data(html_path):
+    """前回生成した index.html から埋め込みデータを読み出す。無ければ None。"""
+    import os, re
+    if not html_path or not os.path.exists(html_path):
+        return None
+    s = open(html_path, encoding="utf-8").read()
+    m = re.search(r'<script id="rawData" type="application/json">(.*?)</script>', s, re.S)
+    gen = re.search(r'<div class="updated">(.*?)</div>', s)
+    if not m:
+        return None
+    d = json.loads(m.group(1))
+    d["_generated_at"] = gen.group(1) if gen else None
+    return d
+
+
+def compute_changes(data, prev):
+    """前回との差分（昇段者・新メンバー）と現在の注目（合格ライン到達・昇段リーチ）を作る。"""
+    players = data["players"]
+    ready = [p["key"] for p in players if p["exam"] and p["exam"].get("status") == "ready"]
+    reach = [p["key"] for p in players if p["exam"] and p["exam"].get("status") == "on_track"
+             and 0 < p["exam"].get("remaining_games", 0) <= REACH_REMAINING]
+    changes = {"ready": ready, "reach": reach, "promoted": [], "new": [], "since": None}
+    if not prev:
+        return changes
+
+    P = {p["key"]: p for p in prev.get("players", [])}
+    games_changed = any(p["key"] not in P or p["career"]["games"] != P[p["key"]]["career"]["games"]
+                        for p in players)
+    if not games_changed and prev.get("changes"):
+        # 同じデータでの再生成 → 前回の「前回比」をそのまま引き継ぐ
+        old = prev["changes"]
+        changes.update({"promoted": old.get("promoted", []), "new": old.get("new", []),
+                        "since": old.get("since")})
+        return changes
+
+    changes["since"] = (prev.get("_generated_at") or "").replace(" 更新", "")
+    for p in players:
+        q = P.get(p["key"])
+        if q is None:
+            changes["new"].append(p["key"])
+        elif p["rank_value"] > q.get("rank_value", -1) and q.get("rank_value", -1) >= 0:
+            changes["promoted"].append({"key": p["key"], "from": q["rank"], "to": p["rank"]})
+    return changes
 
 
 def _make_exam(rank, req, games):
@@ -355,8 +421,8 @@ TEMPLATE = r"""<!DOCTYPE html>
   }
   .tilewall .t.done{background:var(--green-dragon);border-color:var(--green-dragon);}
   .tilewall .t.p1{background:#1f6b3a;border-color:#174f2b;}
-  .tilewall .t.p2{background:#3f7fa6;border-color:#2f6385;}
-  .tilewall .t.p3{background:#c98a1e;border-color:#a06d15;}
+  .tilewall .t.p2{background:#2b74b8;border-color:#225d94;}
+  .tilewall .t.p3{background:#b8780f;border-color:#93600c;}
   .tilewall .t.p4{background:#a8322c;border-color:#842520;}
   .tilewall .lbl{width:100%;font-size:.68rem;color:var(--ink-soft);margin-bottom:2px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;}
   .placelegend{display:flex;gap:8px;flex-wrap:wrap;font-size:.66rem;color:var(--ink-soft);}
@@ -439,6 +505,63 @@ TEMPLATE = r"""<!DOCTYPE html>
   .empty{text-align:center;color:rgba(255,255,255,.5);padding:40px;font-size:.85rem;}
   footer{text-align:center;color:rgba(255,255,255,.35);font-size:.7rem;margin-top:40px;letter-spacing:.05em;}
 
+  /* ---- copy link ---- */
+  .linkbtn{
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.25); color:#eef3ee;
+    font-family:'Zen Kaku Gothic New',sans-serif; font-size:.78rem; padding:9px 14px;
+    border-radius:20px; cursor:pointer; letter-spacing:.03em; touch-action:manipulation;
+  }
+  .linkbtn.done{background:var(--tile); color:var(--green-dragon); border-color:var(--tile); font-weight:700;}
+
+  /* ---- news (今回の更新) ---- */
+  .news{
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); border-radius:12px;
+    padding:14px 16px 6px; margin:-14px 0 34px; color:#eef3ee;
+  }
+  .news .ntitle{font-family:'Shippori Mincho', serif; font-weight:700; letter-spacing:.12em; font-size:.92rem; color:#f6efdd; margin-bottom:10px;}
+  .news .ntitle small{font-family:'Zen Kaku Gothic New',sans-serif; font-weight:400; letter-spacing:.03em; font-size:.68rem; color:rgba(255,255,255,.5); margin-left:8px;}
+  .news .ngroup{display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;}
+  .news .nlabel{flex:0 0 7.2em; font-size:.72rem; font-weight:700; padding-top:5px; color:rgba(255,255,255,.75);}
+  .news .nlabel .ico{display:inline-block; width:1.3em; text-align:center;}
+  .news .nchips{display:flex; flex-wrap:wrap; gap:6px;}
+  .news .nchip{
+    background:var(--tile); color:var(--ink); border:1px solid var(--tile-edge); border-radius:16px;
+    padding:4px 10px; font-size:.76rem; font-weight:700; cursor:pointer; font-family:'Zen Kaku Gothic New',sans-serif;
+  }
+  .news .nchip small{font-weight:500; color:var(--ink-soft); margin-left:4px;}
+  .news .nnone{font-size:.74rem; color:rgba(255,255,255,.45); padding-top:5px;}
+
+  /* ---- status filter ---- */
+  .filterbtns{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin:0 0 12px;}
+  .filterbtns button{
+    background:transparent; border:1px dashed rgba(255,255,255,.25); color:rgba(255,255,255,.75);
+    font-family:'Zen Kaku Gothic New',sans-serif; font-size:.72rem; padding:6px 11px; border-radius:16px; cursor:pointer;
+  }
+  .filterbtns button b{margin-left:4px; font-weight:700;}
+  .filterbtns button.active{background:var(--tile); color:var(--ink); border:1px solid var(--tile); font-weight:700;}
+
+  /* ---- simulator: 収支判定 ---- */
+  .simjudge{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;}
+  .simjudge > div{background:rgba(255,255,255,.55); border:1px solid var(--tile-edge); border-radius:8px; padding:8px 10px; font-size:.72rem; color:var(--ink-soft);}
+  .simjudge b{display:block; font-family:'Shippori Mincho', serif; font-size:1.15rem; color:var(--ink);}
+  .simjudge .ok{color:var(--green-dragon); font-weight:700;}
+  .simjudge .ng{color:var(--red); font-weight:700;}
+  .simverdict{font-size:.86rem; font-weight:700; margin-bottom:6px;}
+  .simnote{font-size:.68rem; color:var(--ink-soft); line-height:1.6;}
+
+  /* ---- trend charts ---- */
+  .trends{margin-top:18px; padding-top:16px; border-top:1px dashed var(--tile-edge); display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .trend{background:rgba(0,0,0,.03); border:1px solid var(--tile-edge); border-radius:10px; padding:12px 12px 8px; position:relative;}
+  .trend .ttitle{font-family:'Shippori Mincho', serif; font-weight:700; font-size:.85rem; color:var(--ink); margin-bottom:2px;}
+  .trend .tsub{font-size:.66rem; color:var(--ink-soft); margin-bottom:6px;}
+  .trend svg{display:block; width:100%; height:150px; overflow:visible; touch-action:pan-y;}
+  .trend svg text{font-family:'Zen Kaku Gothic New',sans-serif; font-size:10px; fill:var(--ink-soft);}
+  .trend .tip{
+    position:absolute; pointer-events:none; background:var(--ink); color:#f6efdd; font-size:.7rem;
+    padding:4px 8px; border-radius:6px; white-space:nowrap; transform:translate(-50%,-100%); display:none; z-index:2;
+  }
+  .trend .tempty{font-size:.74rem; color:var(--ink-soft); padding:30px 0; text-align:center;}
+
   /* ---- simulator stepper (+/-) ---- */
   .stepper{display:flex; align-items:stretch; gap:4px;}
   .stepper button{
@@ -462,6 +585,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   @media (max-width:720px){
     .statbar{grid-template-columns:repeat(2,1fr);}
     .stats-two{grid-template-columns:1fr;}
+    .trends{grid-template-columns:1fr;}
   }
 
   /* ---- smartphone ---- */
@@ -481,6 +605,14 @@ TEMPLATE = r"""<!DOCTYPE html>
     h2.section-title{margin-bottom:14px;}
     .picker{margin-bottom:14px;}
     .picker select{width:100%; min-width:0; font-size:16px; padding:11px 16px;}
+    .linkbtn{width:100%;}
+    .news{padding:12px 12px 4px; margin-top:-10px; margin-bottom:28px;}
+    .news .ngroup{flex-direction:column; gap:6px;}
+    .news .nlabel{flex:none; padding-top:0;}
+    .filterbtns{flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
+    .filterbtns::-webkit-scrollbar{display:none;}
+    .filterbtns button{flex:0 0 auto;}
+    .trend svg{height:140px;}
 
     .examcard{padding:18px 14px 16px; border-radius:14px; margin-bottom:34px;}
     .exam-head{margin-bottom:10px; gap:8px;}
@@ -549,13 +681,17 @@ TEMPLATE = r"""<!DOCTYPE html>
 
   <div class="statbar" id="statbar"></div>
 
+  <div id="news"></div>
+
   <h2 class="section-title">昇 段 診 断<span class="asof">__DATE_ONLY__</span></h2>
   <div class="picker">
-    <select id="playerSelect"></select>
+    <select id="playerSelect" aria-label="打ち手を選択"></select>
+    <button type="button" class="linkbtn" id="copyLink">この人のリンクをコピー</button>
   </div>
   <div class="examcard" id="examcard"></div>
 
   <h2 class="section-title">らいらいずメンバー一覧</h2>
+  <div class="filterbtns" id="filterbtns" aria-label="審査状況で絞り込み"></div>
   <div class="controls">
     <div class="sortbtns" id="sortbtns"></div>
     <div class="searchbox"><input id="search" type="text" placeholder="名前で検索..."></div>
@@ -623,16 +759,87 @@ function renderStatbar(){
   `;
 }
 
+// ---- 自分専用リンク（?p=キー）と前回見た人の記憶 ----
+const LAST_KEY_STORE = 'rairise:lastKey';
+function findPlayer(q){
+  if(!q) return null;
+  return players.find(p=>p.key===q) || players.find(p=>p.name===q) || null;
+}
+function storeGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function storeSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+function playerUrl(key){
+  const u = new URL(location.href);
+  u.search = ''; u.hash = '';
+  u.searchParams.set('p', key);
+  return u.toString();
+}
+function selectPlayer(key, opts){
+  opts = opts || {};
+  selectedKey = key;
+  document.getElementById('playerSelect').value = key;
+  storeSet(LAST_KEY_STORE, key);
+  try{ history.replaceState(null, '', playerUrl(key)); }catch(e){}
+  renderExamCard();
+  highlightRow();
+  const btn = document.getElementById('copyLink');
+  btn.classList.remove('done'); btn.textContent = 'この人のリンクをコピー';
+  if(opts.scroll) document.getElementById('examcard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
 function renderPicker(){
   const sel = document.getElementById('playerSelect');
   const sorted = [...players].sort((a,b)=> b.rank_value - a.rank_value || a.name.localeCompare(b.name,'ja'));
   sel.innerHTML = sorted.map(p=>`<option value="${p.key}">${p.name}（${p.rank}）</option>`).join('');
-  sel.addEventListener('change', ()=>{ selectedKey = sel.value; renderExamCard(); highlightRow(); });
-  if(!selectedKey) selectedKey = sorted[0].key;
+  sel.addEventListener('change', ()=> selectPlayer(sel.value));
+  let fromUrl = null;
+  try{ fromUrl = findPlayer(new URLSearchParams(location.search).get('p')); }catch(e){}
+  const remembered = findPlayer(storeGet(LAST_KEY_STORE));
+  selectedKey = (fromUrl || remembered || sorted[0]).key;
   sel.value = selectedKey;
+  if(fromUrl) storeSet(LAST_KEY_STORE, fromUrl.key);
+
+  document.getElementById('copyLink').addEventListener('click', async (ev)=>{
+    const btn = ev.currentTarget;
+    const url = playerUrl(selectedKey);
+    let ok = false;
+    try{ await navigator.clipboard.writeText(url); ok = true; }catch(e){
+      try{
+        const ta = document.createElement('textarea'); ta.value = url; ta.setAttribute('readonly','');
+        ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select();
+        ok = document.execCommand('copy'); ta.remove();
+      }catch(e2){}
+    }
+    btn.classList.add('done');
+    btn.textContent = ok ? 'コピーしました（ブックマークにも使えます）' : url;
+  });
+}
+
+// ---- 今回の更新で動いたこと ----
+function renderNews(){
+  const ch = DATA.changes;
+  const el = document.getElementById('news');
+  if(!ch){ el.innerHTML=''; return; }
+  const byKey = Object.fromEntries(players.map(p=>[p.key,p]));
+  const chip = (key, sub) => byKey[key] ? `<button type="button" class="nchip" data-key="${key}">${byKey[key].name}${sub?`<small>${sub}</small>`:''}</button>` : '';
+  const group = (ico, label, items) => `
+    <div class="ngroup"><div class="nlabel"><span class="ico">${ico}</span>${label}</div>
+      <div class="nchips">${items.length ? items.join('') : '<span class="nnone">該当なし</span>'}</div></div>`;
+  const promoted = (ch.promoted||[]).map(x=>chip(x.key, `${x.from}→${x.to}`));
+  const ready = (ch.ready||[]).map(k=>chip(k, byKey[k] && byKey[k].exam ? byKey[k].exam.rank : ''));
+  const reach = (ch.reach||[]).map(k=>chip(k, byKey[k] && byKey[k].exam ? `あと${byKey[k].exam.remaining_games}半荘` : ''));
+  const fresh = (ch.new||[]).map(k=>chip(k, ''));
+  let html = `<div class="news"><div class="ntitle">今回の更新${ch.since?`<small>${ch.since} からの変化</small>`:''}</div>`;
+  if(ch.since) html += group('▲', '昇段した人', promoted);
+  html += group('◎', '合格ライン到達', ready);
+  html += group('◆', `昇段リーチ`, reach);
+  if(fresh.length) html += group('＋', '新メンバー', fresh);
+  html += `</div>`;
+  el.innerHTML = html;
+  el.querySelectorAll('.nchip').forEach(b=>b.addEventListener('click', ()=> selectPlayer(b.dataset.key, {scroll:true})));
 }
 
 const PLACE_LABEL = {1:'トップ', 2:'二着', 3:'三着', 4:'ラス'};
+const PLACE_COLOR = {1:'#1f6b3a',2:'#2b74b8',3:'#b8780f',4:'#a8322c'};
 
 function placeExampleHtml(ex){
   const remaining = ex.remaining_games;
@@ -658,11 +865,24 @@ function placeExampleHtml(ex){
   return `<div class="pacebox placebox">着順基準：残り${remaining}半荘の一例として、<b>${parts}</b> のペースならセーフ（平均着順${ex.required_place}以内を維持できます）。</div>`;
 }
 
+function simAssumedScores(p){
+  // 着順ごとの想定素点：本人の過去平均（3回以上あれば）→ なければサークル全体の平均
+  const mine = (p.career && p.career.place_avg_score) || {};
+  const circle = DATA.circle_place_avg || {};
+  const out = {}, src = {};
+  [1,2,3,4].forEach(k=>{
+    const m = mine[k] || mine[String(k)];
+    if(m && m.n >= 3 && m.avg !== null){ out[k] = m.avg; src[k] = 'mine'; }
+    else { out[k] = circle[k] ?? circle[String(k)] ?? 0; src[k] = 'circle'; }
+  });
+  return {score: out, src};
+}
+
 function simulatorHtml(ex){
   if(!ex.remaining_games || ex.remaining_games <= 0) return '';
   return `
   <div class="simulator" id="simulator">
-    <div class="simtitle">着順基準シミュレーター　（残り ${ex.remaining_games} 半荘のうち、想定回数を入力）</div>
+    <div class="simtitle">昇段シミュレーター　（残り ${ex.remaining_games} 半荘のうち、想定回数を入力）</div>
     <div class="siminputs">
       ${[1,2,3,4].map(k=>`
       <div class="simcol"><label for="sim-${k}">${PLACE_LABEL[k]}</label>
@@ -678,12 +898,13 @@ function simulatorHtml(ex){
   </div>`;
 }
 
-function bindSimulator(ex){
+function bindSimulator(ex, p){
   if(!ex.remaining_games || ex.remaining_games <= 0) return;
   const ids = [1,2,3,4].map(k=>document.getElementById('sim-'+k));
   const box = document.getElementById('simulator');
   const resultEl = document.getElementById('simresult');
   const cap = ex.remaining_games;
+  const assumed = simAssumedScores(p);
 
   ids.forEach(el => el.setAttribute('max', cap));
 
@@ -692,8 +913,7 @@ function bindSimulator(ex){
     let total = counts.reduce((a,b)=>a+b,0);
     if(total > cap){
       const idx = ids.indexOf(changedEl);
-      const excess = total - cap;
-      counts[idx] = Math.max(0, counts[idx] - excess);
+      counts[idx] = Math.max(0, counts[idx] - (total - cap));
       changedEl.value = counts[idx];
     } else {
       changedEl.value = counts[ids.indexOf(changedEl)];
@@ -706,24 +926,42 @@ function bindSimulator(ex){
   function update(){
     const counts = ids.map(el => Math.max(0, parseInt(el.value)||0));
     const entered = counts.reduce((a,b)=>a+b,0);
-    const enteredSum = counts[0]*1 + counts[1]*2 + counts[2]*3 + counts[3]*4;
     const combinedGames = (ex.played_games||0) + entered;
-    const combinedSum = (ex.place_sum||0) + enteredSum;
-    const combinedAvg = combinedGames>0 ? combinedSum/combinedGames : null;
-    const clear = combinedGames>0 && combinedAvg <= ex.required_place;
 
+    // 着順
+    const enteredPlaceSum = counts[0]*1 + counts[1]*2 + counts[2]*3 + counts[3]*4;
+    const combinedPlace = combinedGames>0 ? ((ex.place_sum||0) + enteredPlaceSum)/combinedGames : null;
+    const placeOk = combinedGames>0 && combinedPlace <= ex.required_place;
+
+    // 収支（着順ごとの想定素点で推定）
+    const enteredScore = counts.reduce((a,c,i)=> a + c*assumed.score[i+1], 0);
+    const combinedScore = combinedGames>0 ? ((ex.total_current||0) + enteredScore)/combinedGames : null;
+    const scoreOk = combinedGames>0 && combinedScore >= ex.required_avg;
+
+    const both = placeOk && scoreOk;
     box.classList.remove('safe','unsafe');
-    box.classList.add(clear ? 'safe':'unsafe');
+    box.classList.add(both ? 'safe':'unsafe');
 
-    let note = '';
-    if(entered !== cap){
-      note = `<br><span style="opacity:.7;">入力合計 ${entered} / 残り${cap}半荘（あと${cap-entered}半荘分入力できます）</span>`;
-    } else {
-      note = `<br><span style="opacity:.7;">入力合計 ${entered} / 残り${cap}半荘（上限まで入力済み）</span>`;
-    }
-    resultEl.innerHTML = `入力後の平均着順：<b>${combinedGames>0? combinedAvg.toFixed(3):'—'}</b>　／　基準 ${ex.required_place}以内　→　`
-      + (clear ? '<b style="color:var(--green-dragon);">クリア</b>' : '<b style="color:var(--red);">未達</b>')
-      + note;
+    const full = entered === cap;
+    let verdict;
+    if(entered === 0) verdict = '回数を入力すると、昇段できるかを判定します。';
+    else if(both) verdict = full ? '✓ この想定なら、着順・収支とも基準クリアで昇段ラインです。' : '✓ ここまでの想定では、着順・収支とも基準クリアです。';
+    else if(placeOk) verdict = '△ 着順はクリアですが、収支が基準に届きません。';
+    else if(scoreOk) verdict = '△ 収支はクリアですが、着順が基準に届きません。';
+    else verdict = '× 着順・収支とも基準に届きません。';
+
+    const assumedTxt = [1,2,3,4].map(k=>`${PLACE_LABEL[k]} ${fmtPts(assumed.score[k])}${assumed.src[k]==='circle'?'*':''}`).join(' / ');
+    const hasCircle = [1,2,3,4].some(k=>assumed.src[k]==='circle');
+
+    resultEl.innerHTML = `
+      <div class="simverdict" style="color:${entered===0?'var(--ink-soft)':(both?'var(--green-dragon)':'var(--red)')}">${verdict}</div>
+      <div class="simjudge">
+        <div>平均着順（${ex.required_place}以内）<b>${combinedGames>0? combinedPlace.toFixed(3):'—'}</b><span class="${placeOk?'ok':'ng'}">${placeOk?'クリア':'未達'}</span></div>
+        <div>平均収支（${ex.required_avg}以上）<b>${combinedGames>0? combinedScore.toFixed(1):'—'}</b><span class="${scoreOk?'ok':'ng'}">${scoreOk?'クリア':'未達'}</span></div>
+      </div>
+      <div class="simnote">入力合計 ${entered} / 残り${cap}半荘${full?'（上限まで入力済み）':`（あと${cap-entered}半荘分入力できます）`}<br>
+      収支は1半荘あたりの想定素点で推定：${assumedTxt}<br>
+      （${p.name}さんの過去の着順別平均${hasCircle?'。*は過去データが少ないためサークル全体の平均':''}）</div>`;
   }
 
   ids.forEach(el => el.addEventListener('input', ()=>{ clampField(el); update(); }));
@@ -737,6 +975,129 @@ function bindSimulator(ex){
     update();
   });
   update();
+}
+
+// ---- 成績推移グラフ（1系列ずつ・軸は1本） ----
+function trendsHtml(p){
+  const n = (p.career && p.career.places || []).length;
+  if(n < 2) return `<div class="trends"><div class="trend"><div class="ttitle">成績の推移</div><div class="tempty">対局データが2半荘以上になると表示されます</div></div></div>`;
+  const win = Math.min(10, n);
+  return `
+  <div class="trends">
+    <div class="trend" id="trend-pts">
+      <div class="ttitle">累計ポイントの推移</div>
+      <div class="tsub">1半荘目 → 最新（${n}半荘）。網かけは現在の審査期間</div>
+      <svg role="img" aria-label="累計ポイントの推移"></svg><div class="tip"></div>
+    </div>
+    <div class="trend" id="trend-place">
+      <div class="ttitle">平均着順の推移</div>
+      <div class="tsub">直近${win}半荘の移動平均。上ほど好成績</div>
+      <svg role="img" aria-label="平均着順の推移"></svg><div class="tip"></div>
+    </div>
+  </div>`;
+}
+
+function niceTicks(min, max, count){
+  const span = max - min || 1;
+  const step0 = span / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1,2,2.5,5,10].map(m=>m*mag).find(s=>span/s <= count) || 10*mag;
+  const t = []; for(let v=Math.ceil(min/step)*step; v<=max+1e-9; v+=step) t.push(+v.toFixed(6));
+  return t;
+}
+
+function drawLine(container, opts){
+  const svg = container.querySelector('svg');
+  const tip = container.querySelector('.tip');
+  const W = Math.max(svg.clientWidth || 300, 200), H = svg.clientHeight || 150;
+  const m = {l:44, r:10, t:10, b:22};
+  const vals = opts.values, n = vals.length;
+  let lo = opts.min ?? Math.min(...vals.filter(v=>v!==null)), hi = opts.max ?? Math.max(...vals.filter(v=>v!==null));
+  if(opts.ref !== undefined){ lo = Math.min(lo, opts.ref); hi = Math.max(hi, opts.ref); }
+  if(opts.zero){ lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if(hi === lo){ hi += 1; lo -= 1; }
+  const pad = (hi-lo)*0.06; if(opts.min===undefined) lo -= pad; if(opts.max===undefined) hi += pad;
+  const x = i => m.l + (n===1?0:(i/(n-1))*(W-m.l-m.r));
+  const y = v => opts.invert ? m.t + ((v-lo)/(hi-lo))*(H-m.t-m.b) : H-m.b - ((v-lo)/(hi-lo))*(H-m.t-m.b);
+  const NS = 'http://www.w3.org/2000/svg';
+  let g = '';
+  // 審査期間の網かけ
+  if(opts.shadeFrom !== undefined && opts.shadeFrom < n){
+    const x0 = x(Math.max(opts.shadeFrom-0.5,0)), x1 = x(n-1);
+    g += `<rect x="${x0}" y="${m.t}" width="${Math.max(x1-x0,2)}" height="${H-m.t-m.b}" fill="#b8860b" opacity=".08"/>`;
+  }
+  // グリッドと目盛り（細く控えめに）
+  const ticks = opts.ticks || niceTicks(lo, hi, 4);
+  ticks.forEach(v=>{
+    if(v<lo-1e-9||v>hi+1e-9) return;
+    g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="#d9cba5" stroke-width="1"/>`;
+    g += `<text x="${m.l-6}" y="${y(v)+3}" text-anchor="end">${opts.tickFmt(v)}</text>`;
+  });
+  // 基準線
+  if(opts.ref !== undefined){
+    g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(opts.ref)}" y2="${y(opts.ref)}" stroke="#5b6357" stroke-width="1"/>`;
+    g += `<text x="${W-m.r}" y="${y(opts.ref)-4}" text-anchor="end" style="fill:#20281f;font-weight:700">${opts.refLabel}</text>`;
+  }
+  // x軸ラベル
+  g += `<text x="${m.l}" y="${H-6}" text-anchor="start">1</text><text x="${W-m.r}" y="${H-6}" text-anchor="end">${n}半荘</text>`;
+  // 線
+  let d=''; let started=false;
+  vals.forEach((v,i)=>{ if(v===null){started=false;return;} d += (started?'L':'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); started=true; });
+  g += `<path d="${d}" fill="none" stroke="${opts.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  // 最新値の点＋ラベル
+  const li = n-1;
+  if(vals[li]!==null){
+    g += `<circle cx="${x(li)}" cy="${y(vals[li])}" r="4" fill="${opts.color}" stroke="#f6efdd" stroke-width="2"/>`;
+  }
+  // ホバー用
+  g += `<line class="cross" x1="0" x2="0" y1="${m.t}" y2="${H-m.b}" stroke="#20281f" stroke-width="1" opacity="0"/>`;
+  g += `<circle class="hdot" r="4" fill="${opts.color}" stroke="#f6efdd" stroke-width="2" opacity="0"/>`;
+  g += `<rect class="hit" x="${m.l}" y="0" width="${W-m.l-m.r}" height="${H}" fill="transparent"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+  const cross = svg.querySelector('.cross'), hdot = svg.querySelector('.hdot'), hit = svg.querySelector('.hit');
+  function show(evt){
+    const r = svg.getBoundingClientRect();
+    const px = (evt.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(n-1, Math.round((px - m.l)/((W-m.l-m.r)/Math.max(n-1,1)))));
+    if(vals[i]===null) return;
+    cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('opacity', .35);
+    hdot.setAttribute('cx', x(i)); hdot.setAttribute('cy', y(vals[i])); hdot.setAttribute('opacity', 1);
+    const cr = container.getBoundingClientRect();
+    tip.textContent = opts.tipFmt(i, vals[i]);
+    tip.style.display='block';
+    const tw = tip.offsetWidth;
+    let left = r.left - cr.left + x(i)*(r.width/W);
+    left = Math.max(tw/2 + 4, Math.min(cr.width - tw/2 - 4, left));
+    tip.style.left = left + 'px';
+    tip.style.top = (r.top - cr.top + y(vals[i])*(r.height/H) - 10) + 'px';
+  }
+  function hide(){ cross.setAttribute('opacity',0); hdot.setAttribute('opacity',0); tip.style.display='none'; }
+  hit.addEventListener('pointermove', show);
+  hit.addEventListener('pointerdown', show);
+  hit.addEventListener('pointerleave', hide);
+}
+
+function renderTrends(p, ex){
+  const places = (p.career && p.career.places) || [], scores = (p.career && p.career.scores) || [];
+  const n = places.length;
+  if(n < 2) return;
+  const shadeFrom = ex && ex.played_games ? n - ex.played_games : undefined;
+  let acc = 0; const cum = scores.map(s=> (acc += s));
+  drawLine(document.getElementById('trend-pts'), {
+    values: cum, color:'#1f6b3a', zero:true, shadeFrom,
+    tickFmt: v => Math.abs(v)>=10000 ? (v/10000).toFixed(1).replace(/\.0$/,'')+'万' : v.toLocaleString(),
+    tipFmt: (i,v) => `${i+1}半荘目　累計${v>0?'+':''}${Math.round(v).toLocaleString()}　${PLACE_LABEL[places[i]]} ${fmtPts(scores[i])}`,
+  });
+  const win = Math.min(10, n);
+  const ma = places.map((_,i)=> i+1 < win ? null : places.slice(i+1-win, i+1).reduce((a,b)=>a+b,0)/win);
+  const refPlace = ex && ex.required_place ? ex.required_place : undefined;
+  drawLine(document.getElementById('trend-place'), {
+    values: ma, color:'#2b74b8', invert:true, min:1, max:4, ticks:[1,2,3,4], shadeFrom,
+    ref: refPlace, refLabel: refPlace ? `基準 ${refPlace}` : '',
+    tickFmt: v => v.toFixed(0)+'着',
+    tipFmt: (i,v) => `${i+1}半荘目時点　直近${win}半荘 平均${v.toFixed(2)}着`,
+  });
 }
 
 function statsTwoPanels(p, ex){
@@ -780,7 +1141,9 @@ function renderExamCard(){
       </div>
       <div class="exam-msg">まだ段位が設定されていません。対局を開始すると五級からの審査がスタートします。</div>
       ${statsTwoPanels(p, {played_games:0, avg_place:null, last_avoid_rate:null, total_current:0})}
+      ${trendsHtml(p)}
     `;
+    renderTrends(p, null);
     return;
   }
 
@@ -793,7 +1156,7 @@ function renderExamCard(){
     return `<div class="t ${i < ex.played_games ? 'done':''}"></div>`;
   }).join('');
   const placeCount = [1,2,3,4].map(k=>places.filter(x=>x===k).length);
-  const PLACE_COLOR = {1:'#1f6b3a',2:'#3f7fa6',3:'#c98a1e',4:'#a8322c'};
+  
   const legend = places.length ? `<span class="placelegend">${[1,2,3,4].map(k=>
     `<span><i style="background:${PLACE_COLOR[k]}"></i>${PLACE_LABEL[k]}<b>${placeCount[k-1]}</b></span>`).join('')}</span>` : '';
 
@@ -847,8 +1210,10 @@ function renderExamCard(){
     ${paceHtml}
     ${simulatorHtml(ex)}
     ${statsTwoPanels(p, ex)}
+    ${trendsHtml(p)}
   `;
-  bindSimulator(ex);
+  bindSimulator(ex, p);
+  renderTrends(p, ex);
 }
 
 const sortOptions = [
@@ -888,9 +1253,28 @@ function playerSortValue(p, key){
   return 0;
 }
 
+// ---- 審査状況フィルタ ----
+let statusFilter = 'all';
+const FILTERS = [
+  {key:'all', label:'すべて'}, {key:'ready', label:'合格ライン到達'}, {key:'on_track', label:'基準クリア中'},
+  {key:'behind', label:'追い上げ中'}, {key:'reset_pending', label:'要再挑戦'}, {key:'not_started', label:'審査開始前'},
+];
+function renderFilters(){
+  const el = document.getElementById('filterbtns');
+  const count = k => k==='all' ? activePlayers.length : activePlayers.filter(p=>(p.exam?p.exam.status:'unranked')===k).length;
+  el.innerHTML = FILTERS.filter(f=>f.key==='all'||count(f.key)>0)
+    .map(f=>`<button type="button" data-key="${f.key}" class="${f.key===statusFilter?'active':''}">${f.label}<b>${count(f.key)}</b></button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>{
+    statusFilter = b.dataset.key;
+    el.querySelectorAll('button').forEach(x=>x.classList.toggle('active', x===b));
+    renderRows();
+  }));
+}
+
 function renderRows(){
   const q = document.getElementById('search').value.trim().toLowerCase();
-  let list = activePlayers.filter(p=>p.name.toLowerCase().includes(q));
+  let list = activePlayers.filter(p=>p.name.toLowerCase().includes(q))
+    .filter(p=> statusFilter==='all' || (p.exam ? p.exam.status : 'unranked')===statusFilter);
   list.sort((a,b)=>{
     let av = playerSortValue(a, sortKey), bv = playerSortValue(b, sortKey);
     if(av===null) av = -Infinity;
@@ -914,13 +1298,7 @@ function renderRows(){
     </div>`;
   }).join('');
   rowsEl.querySelectorAll('.row').forEach(r=>{
-    r.addEventListener('click', ()=>{
-      selectedKey = r.dataset.key;
-      document.getElementById('playerSelect').value = selectedKey;
-      renderExamCard();
-      highlightRow();
-      document.getElementById('examcard').scrollIntoView({behavior:'smooth', block:'start'});
-    });
+    r.addEventListener('click', ()=> selectPlayer(r.dataset.key, {scroll:true}));
   });
   highlightRow();
 }
@@ -929,9 +1307,17 @@ document.getElementById('search').addEventListener('input', renderRows);
 
 renderStatbar();
 renderPicker();
+renderNews();
 renderExamCard();
+renderFilters();
 renderSortButtons();
 renderRows();
+if(new URLSearchParams(location.search).get('p')){
+  setTimeout(()=>document.getElementById('examcard').scrollIntoView({block:'start'}), 50);
+}
+let _rz; window.addEventListener('resize', ()=>{ clearTimeout(_rz); _rz=setTimeout(()=>{
+  const p = players.find(x=>x.key===selectedKey); if(p) renderTrends(p, p.exam && p.exam.status!=='unranked' ? p.exam : null);
+}, 150); });
 </script>
 </body>
 </html>
@@ -949,16 +1335,27 @@ def build_html(data):
 
 
 def main():
-    if len(sys.argv) < 3:
-        print("使い方: python3 generate_dashboard.py <入力xlsx> <出力html>")
+    args = sys.argv[1:]
+    prev_path = None
+    if "--prev" in args:
+        i = args.index("--prev")
+        prev_path = args[i + 1]
+        del args[i:i + 2]
+    if len(args) < 2:
+        print("使い方: python3 generate_dashboard.py <入力xlsx> <出力html> [--prev <前回のindex.html>]")
+        print("  --prev 省略時は、出力先に既にあるhtmlを前回分として比較に使う")
         sys.exit(1)
-    xlsx_path = sys.argv[1]
-    out_path = sys.argv[2]
+    xlsx_path, out_path = args[0], args[1]
     data, warnings = extract(xlsx_path)
+    prev = load_prev_data(prev_path or out_path)
+    data["changes"] = compute_changes(data, prev)
     html = build_html(data)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"生成完了: {out_path}（{len(data['players'])}名分）")
+    ch = data["changes"]
+    print(f"[今回の更新] 比較元: {ch.get('since') or 'なし'} / 昇段 {len(ch['promoted'])}名・"
+          f"新メンバー {len(ch['new'])}名・合格ライン到達 {len(ch['ready'])}名・昇段リーチ {len(ch['reach'])}名")
     if warnings:
         print("--- 確認事項 ---")
         for w in warnings:
