@@ -256,6 +256,9 @@ def _make_exam(rank, req, games):
         "total_remaining": round(total_remaining, 1),
         "pace_needed": pace_needed,
         "status": status,
+        # 期間内の各半荘（古い順）。進捗メーターの着順表示に使う
+        "places": [g["place"] for g in games],
+        "scores": [round(g["score"], 1) for g in games],
     }
 
 
@@ -344,9 +347,22 @@ TEMPLATE = r"""<!DOCTYPE html>
   .exam-msg{font-size:.82rem; color:var(--ink-soft); margin-bottom:18px; line-height:1.6;}
 
   .tilewall{display:flex; flex-wrap:wrap; gap:4px; margin-bottom:20px;}
-  .tilewall .t{width:18px;height:24px;border-radius:3px;background:#efe6cd;border:1px solid var(--tile-edge);}
+  .tilewall .t{
+    width:24px;height:32px;border-radius:4px;background:#efe6cd;border:1px solid var(--tile-edge);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Shippori Mincho', serif;font-weight:800;font-size:.95rem;color:#fff;
+    box-shadow:inset 0 -3px 0 rgba(0,0,0,.18);
+  }
   .tilewall .t.done{background:var(--green-dragon);border-color:var(--green-dragon);}
-  .tilewall .lbl{width:100%;font-size:.68rem;color:var(--ink-soft);margin-bottom:2px;}
+  .tilewall .t.p1{background:#1f6b3a;border-color:#174f2b;}
+  .tilewall .t.p2{background:#3f7fa6;border-color:#2f6385;}
+  .tilewall .t.p3{background:#c98a1e;border-color:#a06d15;}
+  .tilewall .t.p4{background:#a8322c;border-color:#842520;}
+  .tilewall .lbl{width:100%;font-size:.68rem;color:var(--ink-soft);margin-bottom:2px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;}
+  .placelegend{display:flex;gap:8px;flex-wrap:wrap;font-size:.66rem;color:var(--ink-soft);}
+  .placelegend span{display:inline-flex;align-items:center;gap:3px;}
+  .placelegend i{display:inline-block;width:10px;height:10px;border-radius:2px;}
+  .placelegend b{font-weight:700;color:var(--ink);}
 
   .metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
   .metric{background:rgba(0,0,0,.03);border:1px solid var(--tile-edge);border-radius:10px;padding:14px 16px;}
@@ -472,7 +488,7 @@ TEMPLATE = r"""<!DOCTYPE html>
     .exam-msg{margin-bottom:14px;}
 
     .tilewall{gap:3px; margin-bottom:16px;}
-    .tilewall .t{width:15px; height:20px;}
+    .tilewall .t{width:21px; height:28px; font-size:.85rem;}
 
     .metrics{gap:8px; margin-bottom:12px;}
     .metric{padding:10px 10px;}
@@ -769,9 +785,17 @@ function renderExamCard(){
   }
 
   const tier = rankTier(ex.rank);
-  const tiles = Array.from({length: ex.required_games}, (_,i)=>
-    `<div class="t ${i < ex.played_games ? 'done':''}"></div>`
-  ).join('');
+  const places = ex.places || [];
+  const scores = ex.scores || [];
+  const tiles = Array.from({length: Math.max(ex.required_games, places.length)}, (_,i)=>{
+    const pl = places[i];
+    if(pl) return `<div class="t p${pl}" title="${i+1}半荘目：${PLACE_LABEL[pl]}（${fmtPts(scores[i])}）">${pl}</div>`;
+    return `<div class="t ${i < ex.played_games ? 'done':''}"></div>`;
+  }).join('');
+  const placeCount = [1,2,3,4].map(k=>places.filter(x=>x===k).length);
+  const PLACE_COLOR = {1:'#1f6b3a',2:'#3f7fa6',3:'#c98a1e',4:'#a8322c'};
+  const legend = places.length ? `<span class="placelegend">${[1,2,3,4].map(k=>
+    `<span><i style="background:${PLACE_COLOR[k]}"></i>${PLACE_LABEL[k]}<b>${placeCount[k-1]}</b></span>`).join('')}</span>` : '';
 
   let msg = '';
   if(ex.status==='not_started'){
@@ -807,7 +831,7 @@ function renderExamCard(){
     </div>
     <div class="exam-msg">${msg}</div>
     <div class="tilewall">
-      <div class="lbl">半荘進捗　${ex.played_games} / ${ex.required_games}</div>
+      <div class="lbl"><span>半荘進捗　${ex.played_games} / ${ex.required_games}</span>${legend}</div>
       ${tiles}
     </div>
     <div class="metrics">
