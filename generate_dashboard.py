@@ -212,7 +212,6 @@ def extract(xlsx_path):
                 "top_count": career_top,
                 # 全半荘の推移（古い順）。成績推移グラフに使う
                 "places": [g["place"] for g in all_games],
-                "scores": [round(g["score"], 1) for g in all_games],
                 "place_avg_score": place_avg_score,
             },
             "exam": exam,
@@ -388,11 +387,30 @@ TEMPLATE = r"""<!DOCTYPE html>
   }
 
   .picker{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center; margin-bottom:20px;}
-  .picker select{
-    background:var(--tile); border:1px solid var(--tile-edge); color:var(--ink);
-    font-family:'Zen Kaku Gothic New',sans-serif; font-weight:700; font-size:.9rem;
-    padding:9px 16px; border-radius:20px; cursor:pointer; min-width:220px;
+  .combo{position:relative; width:100%; max-width:420px;}
+  .combo input{
+    width:100%; background:var(--tile); border:2px solid var(--tile-edge); color:var(--ink);
+    font-family:'Zen Kaku Gothic New',sans-serif; font-weight:700; font-size:16px;
+    padding:12px 44px 12px 18px; border-radius:24px; outline:none; -webkit-appearance:none; appearance:none;
   }
+  .combo input::placeholder{color:#8a8574; font-weight:500;}
+  .combo input:focus{border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,134,11,.25);}
+  .combo::after{content:"⌕"; position:absolute; right:16px; top:50%; transform:translateY(-50%); font-size:1.2rem; color:var(--ink-soft); pointer-events:none;}
+  .combo ul{
+    position:absolute; left:0; right:0; top:calc(100% + 6px); z-index:20; margin:0; padding:6px; list-style:none;
+    background:var(--tile); border:1px solid var(--tile-edge); border-radius:14px; box-shadow:var(--shadow);
+    max-height:min(60vh, 360px); overflow-y:auto; -webkit-overflow-scrolling:touch;
+  }
+  .combo li{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:700; color:var(--ink);}
+  .combo li[aria-selected="true"], .combo li:hover{background:#efe6cd;}
+  .combo li .badge{font-size:.66rem; padding:3px 9px; border-radius:20px; color:#fff; font-weight:700; white-space:nowrap;}
+  .combo li.none{color:var(--ink-soft); font-weight:500; cursor:default; background:none;}
+  .picker.first .combo input{border-color:var(--gold); animation:pulse 2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(184,134,11,.0);}50%{box-shadow:0 0 0 6px rgba(184,134,11,.28);}}
+  @media (prefers-reduced-motion: reduce){ .picker.first .combo input{animation:none;} }
+  .welcome{text-align:center; padding:26px 10px 22px;}
+  .welcome .wt{font-family:'Shippori Mincho', serif; font-weight:800; font-size:1.15rem; margin-bottom:8px;}
+  .welcome p{font-size:.82rem; color:var(--ink-soft); line-height:1.8; margin:0 auto; max-width:30em; text-align:left;}
 
   .examcard{
     background:var(--tile); border:1px solid var(--tile-edge); border-radius:16px;
@@ -516,12 +534,12 @@ TEMPLATE = r"""<!DOCTYPE html>
   /* ---- news (今回の更新) ---- */
   .news{
     background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); border-radius:12px;
-    padding:14px 16px 6px; margin:-14px 0 34px; color:#eef3ee;
+    padding:14px 16px 6px; margin:0 0 20px; color:#eef3ee;
   }
   .news .ntitle{font-family:'Shippori Mincho', serif; font-weight:700; letter-spacing:.12em; font-size:.92rem; color:#f6efdd; margin-bottom:10px;}
   .news .ntitle small{font-family:'Zen Kaku Gothic New',sans-serif; font-weight:400; letter-spacing:.03em; font-size:.68rem; color:rgba(255,255,255,.5); margin-left:8px;}
   .news .ngroup{display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;}
-  .news .nlabel{flex:0 0 7.2em; font-size:.72rem; font-weight:700; padding-top:5px; color:rgba(255,255,255,.75);}
+  .news .nlabel{flex:0 0 8.4em; font-size:.72rem; font-weight:700; padding-top:5px; color:rgba(255,255,255,.75);}
   .news .nlabel .ico{display:inline-block; width:1.3em; text-align:center;}
   .news .nchips{display:flex; flex-wrap:wrap; gap:6px;}
   .news .nchip{
@@ -550,7 +568,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   .simnote{font-size:.68rem; color:var(--ink-soft); line-height:1.6;}
 
   /* ---- trend charts ---- */
-  .trends{margin-top:18px; padding-top:16px; border-top:1px dashed var(--tile-edge); display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .trends{margin-top:18px; padding-top:16px; border-top:1px dashed var(--tile-edge); display:grid; grid-template-columns:1fr; gap:14px;}
   .trend{background:rgba(0,0,0,.03); border:1px solid var(--tile-edge); border-radius:10px; padding:12px 12px 8px; position:relative;}
   .trend .ttitle{font-family:'Shippori Mincho', serif; font-weight:700; font-size:.85rem; color:var(--ink); margin-bottom:2px;}
   .trend .tsub{font-size:.66rem; color:var(--ink-soft); margin-bottom:6px;}
@@ -604,9 +622,9 @@ TEMPLATE = r"""<!DOCTYPE html>
 
     h2.section-title{margin-bottom:14px;}
     .picker{margin-bottom:14px;}
-    .picker select{width:100%; min-width:0; font-size:16px; padding:11px 16px;}
+    .combo{max-width:none;}
     .linkbtn{width:100%;}
-    .news{padding:12px 12px 4px; margin-top:-10px; margin-bottom:28px;}
+    .news{padding:12px 12px 4px; margin-bottom:16px;}
     .news .ngroup{flex-direction:column; gap:6px;}
     .news .nlabel{flex:none; padding-top:0;}
     .filterbtns{flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
@@ -679,16 +697,22 @@ TEMPLATE = r"""<!DOCTYPE html>
     <div class="updated">__GENERATED_AT__</div>
   </header>
 
-  <div class="statbar" id="statbar"></div>
+  <h2 class="section-title">昇 段 診 断<span class="asof">__DATE_ONLY__</span></h2>
+  <div class="picker">
+    <div class="combo">
+      <input id="playerSearch" type="text" placeholder="自分の名前を入力して検索" autocomplete="off" autocapitalize="off" spellcheck="false"
+        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="playerList" aria-label="打ち手を名前で検索">
+      <ul id="playerList" role="listbox" hidden></ul>
+    </div>
+    <button type="button" class="linkbtn" id="copyLink" hidden>この人のリンクをコピー</button>
+  </div>
+  <div class="examcard" id="examcard"></div>
 
   <div id="news"></div>
 
-  <h2 class="section-title">昇 段 診 断<span class="asof">__DATE_ONLY__</span></h2>
-  <div class="picker">
-    <select id="playerSelect" aria-label="打ち手を選択"></select>
-    <button type="button" class="linkbtn" id="copyLink">この人のリンクをコピー</button>
-  </div>
-  <div class="examcard" id="examcard"></div>
+  <div class="statbar" id="statbar"></div>
+
+
 
   <h2 class="section-title">らいらいずメンバー一覧</h2>
   <div class="filterbtns" id="filterbtns" aria-label="審査状況で絞り込み"></div>
@@ -776,27 +800,82 @@ function playerUrl(key){
 function selectPlayer(key, opts){
   opts = opts || {};
   selectedKey = key;
-  document.getElementById('playerSelect').value = key;
+  const pl = players.find(x=>x.key===key);
+  document.getElementById('playerSearch').value = pl ? pl.name : '';
+  document.querySelector('.picker').classList.remove('first');
   storeSet(LAST_KEY_STORE, key);
   try{ history.replaceState(null, '', playerUrl(key)); }catch(e){}
   renderExamCard();
   highlightRow();
   const btn = document.getElementById('copyLink');
-  btn.classList.remove('done'); btn.textContent = 'この人のリンクをコピー';
+  btn.hidden = false; btn.classList.remove('done'); btn.textContent = 'この人のリンクをコピー';
   if(opts.scroll) document.getElementById('examcard').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+// ひらがな/カタカナ・全角/半角・大文字小文字を区別せずに検索する
+function normName(t){
+  return (t||'').normalize('NFKC').toLowerCase()
+    .replace(/[ァ-ヶ]/g, c=>String.fromCharCode(c.charCodeAt(0)-0x60))
+    .replace(/[\s・☆★]/g,'');
+}
+
 function renderPicker(){
-  const sel = document.getElementById('playerSelect');
+  const input = document.getElementById('playerSearch');
+  const list = document.getElementById('playerList');
   const sorted = [...players].sort((a,b)=> b.rank_value - a.rank_value || a.name.localeCompare(b.name,'ja'));
-  sel.innerHTML = sorted.map(p=>`<option value="${p.key}">${p.name}（${p.rank}）</option>`).join('');
-  sel.addEventListener('change', ()=> selectPlayer(sel.value));
+  let matches = [], active = -1;
+
+  function open(){
+    const q = normName(input.value);
+    matches = sorted.filter(p => !q || normName(p.name).includes(q) || normName(p.key).includes(q));
+    // 前方一致を先に
+    if(q) matches.sort((a,b)=> (normName(b.name).startsWith(q)) - (normName(a.name).startsWith(q)));
+    active = matches.length ? 0 : -1;
+    list.innerHTML = matches.length
+      ? matches.map((p,i)=>`<li role="option" id="opt-${i}" data-key="${p.key}" aria-selected="${i===active}"><span>${p.name}</span><span class="badge" style="background:${rankTier(p.rank)}">${p.rank||'未認定'}</span></li>`).join('')
+      : '<li class="none">該当する名前がありません</li>';
+    list.hidden = false;
+    input.setAttribute('aria-expanded','true');
+  }
+  function close(restore){
+    list.hidden = true;
+    input.setAttribute('aria-expanded','false');
+    if(restore){ const p = players.find(x=>x.key===selectedKey); input.value = p ? p.name : ''; }
+  }
+  function move(d){
+    if(!matches.length) return;
+    active = (active + d + matches.length) % matches.length;
+    list.querySelectorAll('li').forEach((li,i)=> li.setAttribute('aria-selected', i===active));
+    const li = list.querySelector(`#opt-${active}`); if(li){ li.scrollIntoView({block:'nearest'}); input.setAttribute('aria-activedescendant', li.id); }
+  }
+  function choose(key){ close(false); input.blur(); selectPlayer(key, {scroll:true}); }
+
+  input.addEventListener('focus', ()=>{ input.select(); open(); });
+  input.addEventListener('input', open);
+  input.addEventListener('keydown', e=>{
+    if(e.key==='ArrowDown'){ e.preventDefault(); if(list.hidden) open(); else move(1); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); move(-1); }
+    else if(e.key==='Enter'){ e.preventDefault(); if(active>=0 && matches[active]) choose(matches[active].key); }
+    else if(e.key==='Escape'){ close(true); input.blur(); }
+  });
+  // スクロール中のタップ誤選択を避けるため click で確定（mousedown で入力のblurを防ぐ）
+  list.addEventListener('mousedown', e=> e.preventDefault());
+  list.addEventListener('click', e=>{ const li = e.target.closest('li[data-key]'); if(li) choose(li.dataset.key); });
+  document.addEventListener('pointerdown', e=>{ if(!e.target.closest('.combo')) close(true); });
+
   let fromUrl = null;
   try{ fromUrl = findPlayer(new URLSearchParams(location.search).get('p')); }catch(e){}
   const remembered = findPlayer(storeGet(LAST_KEY_STORE));
-  selectedKey = (fromUrl || remembered || sorted[0]).key;
-  sel.value = selectedKey;
-  if(fromUrl) storeSet(LAST_KEY_STORE, fromUrl.key);
+  const initial = fromUrl || remembered;
+  if(initial){
+    selectedKey = initial.key;
+    input.value = initial.name;
+    document.getElementById('copyLink').hidden = false;
+    if(fromUrl) storeSet(LAST_KEY_STORE, fromUrl.key);
+  } else {
+    selectedKey = null;
+    document.querySelector('.picker').classList.add('first');
+  }
 
   document.getElementById('copyLink').addEventListener('click', async (ev)=>{
     const btn = ev.currentTarget;
@@ -984,14 +1063,9 @@ function trendsHtml(p){
   const win = Math.min(10, n);
   return `
   <div class="trends">
-    <div class="trend" id="trend-pts">
-      <div class="ttitle">累計ポイントの推移</div>
-      <div class="tsub">1半荘目 → 最新（${n}半荘）。網かけは現在の審査期間</div>
-      <svg role="img" aria-label="累計ポイントの推移"></svg><div class="tip"></div>
-    </div>
     <div class="trend" id="trend-place">
       <div class="ttitle">平均着順の推移</div>
-      <div class="tsub">直近${win}半荘の移動平均。上ほど好成績</div>
+      <div class="tsub">直近${win}半荘の移動平均（1半荘目 → 最新${n}半荘）。上ほど好成績、網かけは現在の審査期間</div>
       <svg role="img" aria-label="平均着順の推移"></svg><div class="tip"></div>
     </div>
   </div>`;
@@ -1036,7 +1110,7 @@ function drawLine(container, opts){
   // 基準線
   if(opts.ref !== undefined){
     g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(opts.ref)}" y2="${y(opts.ref)}" stroke="#5b6357" stroke-width="1"/>`;
-    g += `<text x="${W-m.r}" y="${y(opts.ref)-4}" text-anchor="end" style="fill:#20281f;font-weight:700">${opts.refLabel}</text>`;
+
   }
   // x軸ラベル
   g += `<text x="${m.l}" y="${H-6}" text-anchor="start">1</text><text x="${W-m.r}" y="${H-6}" text-anchor="end">${n}半荘</text>`;
@@ -1044,6 +1118,9 @@ function drawLine(container, opts){
   let d=''; let started=false;
   vals.forEach((v,i)=>{ if(v===null){started=false;return;} d += (started?'L':'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); started=true; });
   g += `<path d="${d}" fill="none" stroke="${opts.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  if(opts.ref !== undefined){
+    g += `<text x="${m.l+4}" y="${y(opts.ref)-5}" text-anchor="start" style="fill:#20281f;font-weight:700;paint-order:stroke;stroke:#f1ead6;stroke-width:5px;stroke-linejoin:round">${opts.refLabel}</text>`;
+  }
   // 最新値の点＋ラベル
   const li = n-1;
   if(vals[li]!==null){
@@ -1079,16 +1156,10 @@ function drawLine(container, opts){
 }
 
 function renderTrends(p, ex){
-  const places = (p.career && p.career.places) || [], scores = (p.career && p.career.scores) || [];
+  const places = (p.career && p.career.places) || [];
   const n = places.length;
   if(n < 2) return;
   const shadeFrom = ex && ex.played_games ? n - ex.played_games : undefined;
-  let acc = 0; const cum = scores.map(s=> (acc += s));
-  drawLine(document.getElementById('trend-pts'), {
-    values: cum, color:'#1f6b3a', zero:true, shadeFrom,
-    tickFmt: v => Math.abs(v)>=10000 ? (v/10000).toFixed(1).replace(/\.0$/,'')+'万' : v.toLocaleString(),
-    tipFmt: (i,v) => `${i+1}半荘目　累計${v>0?'+':''}${Math.round(v).toLocaleString()}　${PLACE_LABEL[places[i]]} ${fmtPts(scores[i])}`,
-  });
   const win = Math.min(10, n);
   const ma = places.map((_,i)=> i+1 < win ? null : places.slice(i+1-win, i+1).reduce((a,b)=>a+b,0)/win);
   const refPlace = ex && ex.required_place ? ex.required_place : undefined;
@@ -1130,7 +1201,11 @@ function statsTwoPanels(p, ex){
 function renderExamCard(){
   const p = players.find(x=>x.key===selectedKey);
   const el = document.getElementById('examcard');
-  if(!p){ el.innerHTML = '<div class="empty">打ち手を選択してください</div>'; return; }
+  if(!p){
+    el.innerHTML = `<div class="welcome"><div class="wt">まずは自分の名前を選びましょう</div>
+      <p>上の検索欄に名前の一部を入れると候補が出ます。選ぶと、昇段に必要な成績や着順の推移が表示されます。次回からは最後に見た人が最初に出ます。</p></div>`;
+    return;
+  }
   const ex = p.exam;
 
   if(!ex || ex.status==='unranked'){
