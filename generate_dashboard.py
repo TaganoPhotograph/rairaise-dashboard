@@ -408,9 +408,6 @@ TEMPLATE = r"""<!DOCTYPE html>
   .picker.first .combo input{border-color:var(--gold); animation:pulse 2s ease-in-out infinite;}
   @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(184,134,11,.0);}50%{box-shadow:0 0 0 6px rgba(184,134,11,.28);}}
   @media (prefers-reduced-motion: reduce){ .picker.first .combo input{animation:none;} }
-  .welcome{text-align:center; padding:26px 10px 22px;}
-  .welcome .wt{font-family:'Shippori Mincho', serif; font-weight:800; font-size:1.15rem; margin-bottom:8px;}
-  .welcome p{font-size:.82rem; color:var(--ink-soft); line-height:1.8; margin:0 auto; max-width:30em; text-align:left;}
 
   .examcard{
     background:var(--tile); border:1px solid var(--tile-edge); border-radius:16px;
@@ -1201,11 +1198,8 @@ function statsTwoPanels(p, ex){
 function renderExamCard(){
   const p = players.find(x=>x.key===selectedKey);
   const el = document.getElementById('examcard');
-  if(!p){
-    el.innerHTML = `<div class="welcome"><div class="wt">まずは自分の名前を選びましょう</div>
-      <p>上の検索欄に名前の一部を入れると候補が出ます。選ぶと、昇段に必要な成績や着順の推移が表示されます。次回からは最後に見た人が最初に出ます。</p></div>`;
-    return;
-  }
+  if(!p){ el.innerHTML = ''; el.hidden = true; return; }
+  el.hidden = false;
   const ex = p.exam;
 
   if(!ex || ex.status==='unranked'){
