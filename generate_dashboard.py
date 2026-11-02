@@ -76,6 +76,46 @@ def extract_pairs(ws):
     return pairs
 
 
+def build_history(pairs, exam_target):
+    """各審査ペアの段位・成績・結果を古い順に返す。
+    段位ラベルが空欄のペアは直前のペアの段位を引き継ぐ（先頭が空欄なら次のラベル、無ければ一覧の審査段位）。
+    結果は「次のペアの段位」で決める: 上がっていれば合格(pass)、同じなら再審査(retry)。最下段は審査中(current)。
+    戻り値: (history, attempt)  attempt = 現在の審査段位での挑戦回数（今回を含む）
+    """
+    labels = [p["rank"] if p["rank"] in RANK_ORDER else None for p in pairs]
+    first_label = next((l for l in labels if l), exam_target)
+    resolved, cur = [], first_label
+    for l in labels:
+        cur = l or cur
+        resolved.append(cur)
+
+    history = []
+    for i, (p, rank) in enumerate(zip(pairs, resolved)):
+        st = compute_window_stats(p["games"])
+        if i + 1 < len(pairs):
+            nxt = resolved[i + 1]
+            if rank in RANK_ORDER and nxt in RANK_ORDER and RANK_ORDER.index(nxt) > RANK_ORDER.index(rank):
+                result = "pass"
+            else:
+                result = "retry"
+        elif exam_target and rank != exam_target:
+            result = "pass"  # 最下段のラベルより一覧の段位が上 → 突破済みで新段位0半荘
+        else:
+            result = "current"
+        history.append({
+            "rank": rank, "result": result, "games": st["played"],
+            "avg_place": st["avg_place"], "avg_score": st["avg_score"],
+            "places": [g["place"] for g in p["games"]],
+        })
+
+    if not exam_target:
+        return history, 0
+    attempt = sum(1 for h in history if h["rank"] == exam_target and h["result"] != "pass")
+    if not history or history[-1]["result"] != "current":
+        attempt += 1  # 新段位でまだ対局が無い／履歴なし → 今回が次の挑戦
+    return history, max(attempt, 1)
+
+
 def compute_window_stats(games):
     played = len(games)
     if played == 0:
@@ -193,6 +233,8 @@ def extract(xlsx_path):
         else:
             exam = {"rank": None, "status": "unranked"}
 
+        history, attempt = build_history(pairs, exam_target)
+
         # 着順別の平均素点（シミュレーターの収支推定に使う）
         place_avg_score = {}
         for k in (1, 2, 3, 4):
@@ -215,6 +257,9 @@ def extract(xlsx_path):
                 "place_avg_score": place_avg_score,
             },
             "exam": exam,
+            # 審査履歴（古い順）と、現在の段位での挑戦回数
+            "history": history,
+            "attempt": attempt,
         })
 
     if indirect_fallback_count > 0:
@@ -499,7 +544,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   .searchbox input::placeholder{color:rgba(255,255,255,.4);}
 
   .board{background:rgba(0,0,0,.15); border-radius:14px; padding:8px; border:1px solid rgba(255,255,255,.08);}
-  .row{display:grid; grid-template-columns:44px 1.3fr 78px 66px 60px 74px; align-items:center; gap:6px; background:var(--tile); border:1px solid var(--tile-edge); border-radius:8px; padding:11px 12px; margin-bottom:6px; font-size:.82rem; cursor:pointer; transition:transform .12s ease;}
+  .row{display:grid; grid-template-columns:44px 1.3fr 78px 66px 60px 64px 74px; align-items:center; gap:6px; background:var(--tile); border:1px solid var(--tile-edge); border-radius:8px; padding:11px 12px; margin-bottom:6px; font-size:.82rem; cursor:pointer; transition:transform .12s ease;}
   .row:hover{transform:translateX(2px);}
   .row.selected{outline:2px solid var(--gold);}
   .row.head{background:transparent;border:none;color:rgba(255,255,255,.5);font-size:.64rem;letter-spacing:.08em;padding:2px 12px 8px;margin-bottom:0;cursor:default;}
@@ -545,6 +590,58 @@ TEMPLATE = r"""<!DOCTYPE html>
   }
   .news .nchip small{font-weight:500; color:var(--ink-soft); margin-left:4px;}
   .news .nnone{font-size:.74rem; color:rgba(255,255,255,.45); padding-top:5px;}
+
+  /* ---- 段位ロードマップ ---- */
+  .roadmap{margin:0 0 16px;}
+  .roadmap .rtrack{position:relative; display:grid; grid-template-columns:repeat(14,1fr); align-items:center; height:22px;}
+  .roadmap .rtrack::before{content:""; position:absolute; left:3.5%; right:3.5%; top:50%; height:3px; transform:translateY(-50%); background:#e3d8bb; border-radius:2px;}
+  .roadmap .rtrack .rfill{position:absolute; left:3.5%; top:50%; height:3px; transform:translateY(-50%); background:var(--gold); border-radius:2px;}
+  .roadmap .rdot{position:relative; justify-self:center; width:10px; height:10px; border-radius:50%; background:#efe6cd; border:1.5px solid var(--tile-edge);}
+  .roadmap .rdot.done{background:var(--gold); border-color:var(--gold);}
+  .roadmap .rdot.now{width:18px; height:18px; border:3px solid #fff; box-shadow:0 0 0 2px var(--gold); }
+  .roadmap .rlabels{display:grid; grid-template-columns:repeat(14,1fr); margin-top:4px; font-size:.56rem; color:var(--ink-soft); text-align:center; white-space:nowrap;}
+  .roadmap .rlabels span.now{color:var(--ink); font-weight:700; font-size:.66rem;}
+  .roadmap .rcap{display:flex; justify-content:space-between; gap:8px; font-size:.68rem; color:var(--ink-soft); margin-bottom:6px;}
+  .roadmap .rcap b{color:var(--ink);}
+
+  /* ---- 調子バッジ ---- */
+  .formbadge{display:inline-block; font-size:.66rem; font-weight:700; padding:3px 9px; border-radius:12px; white-space:nowrap;}
+  .formbadge.up{background:#e9f5ec; color:var(--green-dragon);}
+  .formbadge.down{background:#fbf1e3; color:var(--amber);}
+  .formbadge.flat{background:#f1efe8; color:var(--ink-soft);}
+  .attemptbadge{display:inline-block; font-size:.66rem; font-weight:700; padding:3px 9px; border-radius:12px; background:#f1efe8; color:var(--ink-soft); white-space:nowrap;}
+  .formline{font-size:.72rem; color:var(--ink-soft); margin:-8px 0 14px; display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px;}
+  .row .nm .arrow{font-size:.72rem; margin-left:4px; font-weight:700;}
+  .row .nm .arrow.up{color:var(--green-dragon);}
+  .row .nm .arrow.down{color:var(--amber);}
+
+  /* ---- 審査履歴 ---- */
+  .history{margin-top:18px; padding-top:16px; border-top:1px dashed var(--tile-edge);}
+  .history .htitle{font-family:'Shippori Mincho', serif; font-weight:700; letter-spacing:.1em; font-size:.86rem; margin-bottom:10px;}
+  .history .hsteps{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+  .history .hstep{display:inline-flex; align-items:center; gap:6px; font-size:.72rem; padding:4px 10px 4px 4px; border-radius:16px; background:rgba(0,0,0,.04); border:1px solid var(--tile-edge); color:var(--ink);}
+  .history .hstep .badge{font-size:.62rem; padding:2px 8px; border-radius:12px; color:#fff; white-space:nowrap;}
+  .history .hstep.cur{border-color:var(--gold); background:rgba(184,134,11,.08);}
+  .history details summary{cursor:pointer; font-size:.74rem; color:var(--ink-soft); padding:6px 0; list-style:none;}
+  .history details summary::-webkit-details-marker{display:none;}
+  .history details summary::before{content:"▸ "; }
+  .history details[open] summary::before{content:"▾ ";}
+  .history table{width:100%; border-collapse:collapse; font-size:.72rem; margin-top:4px;}
+  .history th{font-weight:500; color:var(--ink-soft); font-size:.62rem; text-align:left; padding:4px 4px; border-bottom:1px solid var(--tile-edge);}
+  .history td{padding:6px 4px; border-bottom:1px solid rgba(0,0,0,.06); vertical-align:middle; font-variant-numeric:tabular-nums;}
+  .history td.n, .history th.n{text-align:right;}
+  .history .res{font-size:.62rem; font-weight:700; padding:2px 7px; border-radius:10px; white-space:nowrap;}
+  .history .res.pass{background:#e9f5ec; color:var(--green-dragon);}
+  .history .res.retry{background:#f1efe8; color:var(--ink-soft);}
+  .history .res.current{background:rgba(184,134,11,.12); color:#6b5410;}
+  .history .dots{display:flex; flex-wrap:wrap; gap:2px; max-width:150px;}
+  .history .dots i{width:6px; height:6px; border-radius:50%; display:block;}
+  .history .dots i.p1{background:#1f6b3a;} .history .dots i.p2{background:#2b74b8;}
+  .history .dots i.p3{background:#b8780f;} .history .dots i.p4{background:#a8322c;}
+
+  /* ---- 一覧: 残り半荘 ---- */
+  .row .col-remain{text-align:right; color:var(--ink); font-variant-numeric:tabular-nums;}
+  .row .col-remain small{color:var(--ink-soft); font-size:.62rem;}
 
   /* ---- status filter ---- */
   .filterbtns{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin:0 0 12px;}
@@ -666,8 +763,8 @@ TEMPLATE = r"""<!DOCTYPE html>
     .board{padding:6px;}
     .row.head{display:none;}
     .row{
-      grid-template-columns:30px auto auto 1fr;
-      grid-template-areas:"rk nm nm badge" "rk place games st";
+      grid-template-columns:30px auto auto auto 1fr;
+      grid-template-areas:"rk nm nm nm badge" "rk place games remain st";
       gap:4px 10px; padding:10px 12px; font-size:.86rem;
     }
     .row .rk{grid-area:rk;}
@@ -677,9 +774,16 @@ TEMPLATE = r"""<!DOCTYPE html>
     .row .col-games{grid-area:games;}
     .row .col-status{grid-area:st;}
     .row .col-place, .row .col-games{text-align:left; font-size:.72rem; color:var(--ink-soft);}
+    .row .col-remain{grid-area:remain;}
+    .row .col-place, .row .col-games, .row .col-remain{text-align:left; font-size:.72rem; color:var(--ink-soft);}
     .row .col-place::before{content:"平均着順 ";}
     .row .col-games::before{content:"半荘 ";}
-    .row .col-place b, .row .col-games b{color:var(--ink); font-size:.82rem;}
+    .row .col-remain::before{content:"残り ";}
+    .row .col-remain small{display:none;}
+    .row .col-place b, .row .col-games b, .row .col-remain b{color:var(--ink); font-size:.82rem;}
+    .roadmap .rlabels span:not(.now):not(.edge){visibility:hidden;}
+    .history .dots{max-width:96px;}
+    .history .hide-sm{display:none;}
   }
 </style>
 </head>
@@ -724,6 +828,7 @@ TEMPLATE = r"""<!DOCTYPE html>
       <div>段位</div>
       <div class="num col-place">平均着順</div>
       <div class="num col-games">半荘</div>
+      <div class="num col-remain">残り</div>
       <div class="col-status" style="text-align:right;">審査状況</div>
     </div>
     <div id="rows"></div>
@@ -1195,6 +1300,92 @@ function statsTwoPanels(p, ex){
   </div>`;
 }
 
+// ---- 直近の調子：直近10半荘の平均着順を通算と比べる ----
+const FORM_N = 10, FORM_TH = 0.25;
+function formOf(p){
+  const pl = (p.career && p.career.places) || [];
+  if(pl.length < FORM_N + 5 || p.career.avg_place==null) return null;
+  const recent = pl.slice(-FORM_N);
+  const ra = recent.reduce((a,b)=>a+b,0) / recent.length;
+  const d = p.career.avg_place - ra;   // 正 = 直近の方が着順が良い
+  const dir = d >= FORM_TH ? 'up' : (d <= -FORM_TH ? 'down' : 'flat');
+  return {dir, recent: ra, career: p.career.avg_place};
+}
+const FORM_LABEL = {up:'↑ 好調', down:'↓ 苦戦中', flat:'→ 平常運転'};
+
+// ---- 段位ロードマップ ----
+function roadmapHtml(p){
+  const cur = p.rank_value;
+  if(cur < 0) return '';
+  const n = RANK_ORDER.length;
+  const left = 100/(n*2), span = 100 - 2*left;
+  const fillPct = (cur/(n-1)) * span;
+  const dots = RANK_ORDER.map((r,i)=>`<span class="rdot ${i<cur?'done':''} ${i===cur?'now':''}" ${i===cur?`style="background:${rankTier(r)}"`:''} title="${r}"></span>`).join('');
+  const labels = RANK_ORDER.map((r,i)=>`<span class="${i===cur?'now':''} ${(i===0||i===n-1)?'edge':''}">${r}</span>`).join('');
+  const toTop = n-1-cur;
+  return `<div class="roadmap" aria-label="段位ロードマップ">
+    <div class="rcap"><span>段位ロードマップ</span><span>${toTop>0?`九段まで あと <b>${toTop}段階</b>`:'<b>最高段位</b>'}</span></div>
+    <div class="rtrack"><span class="rfill" style="width:${fillPct}%"></span>${dots}</div>
+    <div class="rlabels">${labels}</div>
+  </div>`;
+}
+
+// ---- 審査履歴 ----
+const RESULT_LABEL = {pass:'合格', retry:'再挑戦へ', current:'審査中'};
+function historyHtml(p){
+  const h = p.history || [];
+  if(!h.length) return '';
+  // 段位ごとのまとめ（何回目の審査で突破したか）
+  const steps = [];
+  h.forEach(x=>{
+    let s = steps[steps.length-1];
+    if(!s || s.rank!==x.rank){ s = {rank:x.rank, n:0, passed:false, cur:false}; steps.push(s); }
+    s.n++; if(x.result==='pass') s.passed = true; if(x.result==='current') s.cur = true;
+  });
+  const stepHtml = steps.map(s=>{
+    const txt = s.passed ? `${s.n}回目で合格` : (s.cur ? `${s.n}回目 審査中` : `${s.n}回`);
+    return `<span class="hstep ${s.cur?'cur':''}"><span class="badge" style="background:${rankTier(s.rank)}">${s.rank||'—'}</span>${txt}</span>`;
+  }).join('');
+  const rows = h.map((x,i)=>({x,i})).reverse().map(({x,i})=>`
+    <tr>
+      <td>${i+1}</td>
+      <td><span class="badge" style="background:${rankTier(x.rank)};color:#fff;font-size:.6rem;padding:2px 7px;border-radius:10px;white-space:nowrap">${x.rank||'—'}</span></td>
+      <td><span class="res ${x.result}">${RESULT_LABEL[x.result]}</span></td>
+      <td class="n">${x.games}</td>
+      <td class="n">${fmt(x.avg_place,2)}</td>
+      <td class="n hide-sm">${fmt(x.avg_score,1)}</td>
+      <td><span class="dots">${(x.places||[]).map(k=>`<i class="p${k}"></i>`).join('')}</span></td>
+    </tr>`).join('');
+  return `<div class="history">
+    <div class="htitle">審査の歩み</div>
+    <div class="hsteps">${stepHtml}</div>
+    <details>
+      <summary>すべての審査を見る（${h.length}回分・新しい順）</summary>
+      <table>
+        <thead><tr><th>#</th><th>段位</th><th>結果</th><th class="n">半荘</th><th class="n">平均着順</th><th class="n hide-sm">平均素点</th><th>着順</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </details>
+  </div>`;
+}
+
+// 直前の審査が同じ段位の再挑戦だった場合の一言
+function prevAttemptNote(p, ex){
+  const h = p.history || [];
+  if(h.length < 2 || h[h.length-1].result!=='current') return '';
+  const prev = h[h.length-2];
+  if(prev.rank!==ex.rank || prev.result!=='retry') return '';
+  return `前回の${ex.rank}審査（${prev.games}半荘・平均着順${fmt(prev.avg_place,2)}）は基準に届かなかったため、新しい審査が始まっています。`;
+}
+
+function formLineHtml(p){
+  const f = formOf(p);
+  const att = (p.attempt||0) > 1 ? `<span class="attemptbadge">この段位 ${p.attempt}回目の審査</span>` : '';
+  if(!f && !att) return '';
+  const fh = f ? `<span class="formbadge ${f.dir}">${FORM_LABEL[f.dir]}</span><span>直近${FORM_N}半荘の平均着順 <b style="color:var(--ink)">${f.recent.toFixed(2)}</b>（通算 ${f.career.toFixed(2)}）</span>` : '';
+  return `<div class="formline">${att}${fh}</div>`;
+}
+
 function renderExamCard(){
   const p = players.find(x=>x.key===selectedKey);
   const el = document.getElementById('examcard');
@@ -1208,9 +1399,11 @@ function renderExamCard(){
         <div class="exam-name">${p.name}</div>
         <div class="exam-badges"><span class="statusbadge unranked">未認定</span></div>
       </div>
+      ${formLineHtml(p)}
       <div class="exam-msg">まだ段位が設定されていません。対局を開始すると五級からの審査がスタートします。</div>
       ${statsTwoPanels(p, {played_games:0, avg_place:null, last_avoid_rate:null, total_current:0})}
       ${trendsHtml(p)}
+      ${historyHtml(p)}
     `;
     renderTrends(p, null);
     return;
@@ -1239,6 +1432,8 @@ function renderExamCard(){
   } else {
     msg = `現在 ${ex.played_games} / ${ex.required_games} 半荘を消化中です。残り ${ex.remaining_games} 半荘で基準クリアを目指しましょう。`;
   }
+  const note = prevAttemptNote(p, ex);
+  if(note) msg = note + '<br>' + msg;
 
   const placeTag = ex.played_games>0 ? (ex.place_clear ? '<span class="mtag clear">クリア中</span>' : '<span class="mtag notclear">未達</span>') : '';
   const avgTag = ex.played_games>0 ? (ex.avg_clear ? '<span class="mtag clear">クリア中</span>' : '<span class="mtag notclear">未達</span>') : '';
@@ -1261,6 +1456,8 @@ function renderExamCard(){
         <span class="statusbadge ${ex.status}">${STATUS_LABEL[ex.status]}</span>
       </div>
     </div>
+    ${formLineHtml(p)}
+    ${roadmapHtml(p)}
     <div class="exam-msg">${msg}</div>
     <div class="tilewall">
       <div class="lbl"><span>半荘進捗　${ex.played_games} / ${ex.required_games}</span>${legend}</div>
@@ -1280,6 +1477,7 @@ function renderExamCard(){
     ${simulatorHtml(ex)}
     ${statsTwoPanels(p, ex)}
     ${trendsHtml(p)}
+    ${historyHtml(p)}
   `;
   bindSimulator(ex, p);
   renderTrends(p, ex);
@@ -1290,6 +1488,7 @@ const sortOptions = [
   {key:'points', label:'ポイント順', dir:-1},
   {key:'avg_place', label:'平均着順順', dir:1},
   {key:'games', label:'半荘数順', dir:-1},
+  {key:'remaining', label:'残り半荘順', dir:1},
 ];
 let sortKey = 'rank_value';
 let sortDir = -1;
@@ -1319,6 +1518,12 @@ function playerSortValue(p, key){
   if(key==='points') return p.career.points;
   if(key==='avg_place') return p.career.avg_place;
   if(key==='games') return p.career.games;
+  if(key==='remaining'){
+    // 審査中の人だけを残りの少ない順に。審査対象外・未開始は最後に回す
+    const ex = p.exam;
+    if(!ex || ex.status==='unranked' || ex.status==='not_started' || !(ex.remaining_games>0)) return null;
+    return ex.remaining_games;
+  }
   return 0;
 }
 
@@ -1346,8 +1551,9 @@ function renderRows(){
     .filter(p=> statusFilter==='all' || (p.exam ? p.exam.status : 'unranked')===statusFilter);
   list.sort((a,b)=>{
     let av = playerSortValue(a, sortKey), bv = playerSortValue(b, sortKey);
-    if(av===null) av = -Infinity;
-    if(bv===null) bv = -Infinity;
+    const nullVal = sortKey==='remaining' ? Infinity : -Infinity;
+    if(av===null||av===undefined) av = nullVal * sortDir;
+    if(bv===null||bv===undefined) bv = nullVal * sortDir;
     if(av===bv) return (b.career.points||0) - (a.career.points||0);
     return (av-bv) * sortDir;
   });
@@ -1356,13 +1562,20 @@ function renderRows(){
   rowsEl.innerHTML = list.map((p,i)=>{
     const tier = rankTier(p.rank);
     const status = p.exam ? p.exam.status : 'unranked';
+    const ex = p.exam || {};
+    const remain = (ex.required_games && ex.status!=='unranked')
+      ? (ex.remaining_games>0 ? `<b>${ex.remaining_games}</b><small> /${ex.required_games}</small>` : '<b>0</b>')
+      : '<b>—</b>';
+    const f = formOf(p);
+    const arrow = f && f.dir!=='flat' ? `<span class="arrow ${f.dir}" title="直近${FORM_N}半荘 平均着順 ${f.recent.toFixed(2)}（通算 ${f.career.toFixed(2)}）">${f.dir==='up'?'↑':'↓'}</span>` : '';
     return `
     <div class="row" data-key="${p.key}">
       <div class="rk">${i+1}</div>
-      <div class="nm">${p.name}</div>
+      <div class="nm">${p.name}${arrow}</div>
       <div><span class="badge" style="background:${tier}">${p.rank}</span></div>
       <div class="num col-place"><b>${fmt(p.career.avg_place,2)}</b></div>
       <div class="num col-games"><b>${p.career.games||0}</b></div>
+      <div class="num col-remain">${remain}</div>
       <div class="st col-status ${status}">${STATUS_LABEL[status]}</div>
     </div>`;
   }).join('');
