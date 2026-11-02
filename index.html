@@ -217,19 +217,6 @@
   .news .nchip small{font-weight:500; color:var(--ink-soft); margin-left:4px;}
   .news .nnone{font-size:.74rem; color:rgba(255,255,255,.45); padding-top:5px;}
 
-  /* ---- 段位ロードマップ ---- */
-  .roadmap{margin:0 0 16px;}
-  .roadmap .rtrack{position:relative; display:grid; grid-template-columns:repeat(14,1fr); align-items:center; height:22px;}
-  .roadmap .rtrack::before{content:""; position:absolute; left:3.5%; right:3.5%; top:50%; height:3px; transform:translateY(-50%); background:#e3d8bb; border-radius:2px;}
-  .roadmap .rtrack .rfill{position:absolute; left:3.5%; top:50%; height:3px; transform:translateY(-50%); background:var(--gold); border-radius:2px;}
-  .roadmap .rdot{position:relative; justify-self:center; width:10px; height:10px; border-radius:50%; background:#efe6cd; border:1.5px solid var(--tile-edge);}
-  .roadmap .rdot.done{background:var(--gold); border-color:var(--gold);}
-  .roadmap .rdot.now{width:18px; height:18px; border:3px solid #fff; box-shadow:0 0 0 2px var(--gold); }
-  .roadmap .rlabels{display:grid; grid-template-columns:repeat(14,1fr); margin-top:4px; font-size:.56rem; color:var(--ink-soft); text-align:center; white-space:nowrap;}
-  .roadmap .rlabels span.now{color:var(--ink); font-weight:700; font-size:.66rem;}
-  .roadmap .rcap{display:flex; justify-content:space-between; gap:8px; font-size:.68rem; color:var(--ink-soft); margin-bottom:6px;}
-  .roadmap .rcap b{color:var(--ink);}
-
   /* ---- 調子バッジ ---- */
   .formbadge{display:inline-block; font-size:.66rem; font-weight:700; padding:3px 9px; border-radius:12px; white-space:nowrap;}
   .formbadge.up{background:#e9f5ec; color:var(--green-dragon);}
@@ -407,7 +394,6 @@
     .row .col-remain::before{content:"残り ";}
     .row .col-remain small{display:none;}
     .row .col-place b, .row .col-games b, .row .col-remain b{color:var(--ink); font-size:.82rem;}
-    .roadmap .rlabels span:not(.now):not(.edge){visibility:hidden;}
     .history .dots{max-width:96px;}
     .history .hide-sm{display:none;}
   }
@@ -421,7 +407,7 @@
       <h1>らいらいず</h1>
       <div class="sub">個人 成績 ・ 段位 進捗</div>
     </div>
-    <div class="updated">2026年11月02日 16:35 更新</div>
+    <div class="updated">2026年11月02日 16:47 更新</div>
   </header>
 
   <h2 class="section-title">昇 段 診 断<span class="asof">2026年11月02日時点</span></h2>
@@ -939,23 +925,6 @@ function formOf(p){
 }
 const FORM_LABEL = {up:'↑ 好調', down:'↓ 苦戦中', flat:'→ 平常運転'};
 
-// ---- 段位ロードマップ ----
-function roadmapHtml(p){
-  const cur = p.rank_value;
-  if(cur < 0) return '';
-  const n = RANK_ORDER.length;
-  const left = 100/(n*2), span = 100 - 2*left;
-  const fillPct = (cur/(n-1)) * span;
-  const dots = RANK_ORDER.map((r,i)=>`<span class="rdot ${i<cur?'done':''} ${i===cur?'now':''}" ${i===cur?`style="background:${rankTier(r)}"`:''} title="${r}"></span>`).join('');
-  const labels = RANK_ORDER.map((r,i)=>`<span class="${i===cur?'now':''} ${(i===0||i===n-1)?'edge':''}">${r}</span>`).join('');
-  const toTop = n-1-cur;
-  return `<div class="roadmap" aria-label="段位ロードマップ">
-    <div class="rcap"><span>段位ロードマップ</span><span>${toTop>0?`九段まで あと <b>${toTop}段階</b>`:'<b>最高段位</b>'}</span></div>
-    <div class="rtrack"><span class="rfill" style="width:${fillPct}%"></span>${dots}</div>
-    <div class="rlabels">${labels}</div>
-  </div>`;
-}
-
 // ---- 審査履歴 ----
 const RESULT_LABEL = {pass:'合格', retry:'再挑戦へ', current:'審査中'};
 function historyHtml(p){
@@ -1083,7 +1052,6 @@ function renderExamCard(){
       </div>
     </div>
     ${formLineHtml(p)}
-    ${roadmapHtml(p)}
     <div class="exam-msg">${msg}</div>
     <div class="tilewall">
       <div class="lbl"><span>半荘進捗　${ex.played_games} / ${ex.required_games}</span>${legend}</div>
