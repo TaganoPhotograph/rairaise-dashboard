@@ -17,8 +17,10 @@
   - 3組目: 8-9行目
   - ...（以降 2行ずつ増えていく。人によりペア数が異なる）
   - 各ペアの F列（列6）に段位ラベルがあることが多い（無い場合もある）
-  - 各ペアの J〜AM列（列10〜39）が 実績1〜30（該当ペアの各半荘の得点/着順）
-  - BY5:CB18（列77〜80、行5〜18）に段位別の昇段基準テーブル
+  - 3行目の「実績1」見出しの列から30列が 実績1〜30（該当ペアの各半荘の得点/着順）
+    （2026-11-06版で J列に「残回数」が追加され K〜AN列に移動。見出しから自動検出する）
+  - 4行目の「級段位」見出しの列から右に 対象半荘数・着順基準・収支基準 の昇段基準テーブル（行5〜18）
+    （旧: BY〜CB列 → 2026-11-06版: BZ〜CC列。見出しから自動検出する）
 - 「原本」シートは無視する。
 
 計算ルール（★ユーザー指定）:
@@ -48,8 +50,18 @@ def to_num(v):
     return None
 
 
+def find_header_col(ws, row, label, default):
+    """指定行で見出しテキストが label のセルの列番号を返す（見つからなければ default）。"""
+    for c in range(1, 120):
+        v = ws.cell(row=row, column=c).value
+        if isinstance(v, str) and v.strip() == label:
+            return c
+    return default
+
+
 def extract_pairs(ws):
     """個人シートから全ペアを抽出。データが1件でもあるペアのみ返す。"""
+    first_col = find_header_col(ws, 3, "実績1", 10)
     pairs = []
     consecutive_empty = 0
     for pair_idx in range(60):  # 十分な数の枠を確認
@@ -58,7 +70,7 @@ def extract_pairs(ws):
         rank_label = ws.cell(row=r_score, column=6).value
         rank_label = str(rank_label).strip() if rank_label else None
         games = []
-        for c in range(10, 40):
+        for c in range(first_col, first_col + 30):
             s = to_num(ws.cell(row=r_score, column=c).value)
             p = to_num(ws.cell(row=r_place, column=c).value)
             if s is not None and p in (1, 2, 3, 4):
@@ -145,13 +157,18 @@ def extract(xlsx_path):
     # 段位基準テーブル（どのシートでも共通のはずなので、"一覧"・"原本"以外の最初のシートから読む）
     ref_sheet_name = next(s for s in wb.sheetnames if s not in ("一覧", "原本"))
     ref_ws = wb[ref_sheet_name]
+    rank_col = find_header_col(ref_ws, 4, "級段位", 77)
     rank_req = {}
     for i, rank in enumerate(RANK_ORDER):
         r = 5 + i
+        label = ref_ws.cell(row=r, column=rank_col).value
+        if str(label).strip() != rank:
+            raise ValueError(f"段位基準表の{r}行目が「{label}」になっています（想定: {rank}）。シートの構成を確認してください。")
+        num = lambda v: int(v) if isinstance(v, float) and v.is_integer() else v
         rank_req[rank] = {
-            "games": ref_ws.cell(row=r, column=78).value,
-            "place": ref_ws.cell(row=r, column=79).value,
-            "avg": ref_ws.cell(row=r, column=80).value,
+            "games": num(ref_ws.cell(row=r, column=rank_col + 1).value),
+            "place": num(ref_ws.cell(row=r, column=rank_col + 2).value),
+            "avg": num(ref_ws.cell(row=r, column=rank_col + 3).value),
         }
 
     players = []
